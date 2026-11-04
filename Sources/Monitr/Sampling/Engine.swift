@@ -153,7 +153,9 @@ final class Engine {
     }
 
     /// A view that needs per-process data appeared (`true`) or went away (`false`).
-    func setViewer(_ id: String, active: Bool) {
+    /// With `keepData`, sampling pauses but the last figures stay on screen and the
+    /// per-process history is kept (the window was only covered, not closed).
+    func setViewer(_ id: String, active: Bool, keepData: Bool = false) {
         if active { viewers.insert(id) } else { viewers.remove(id) }
         let want = !viewers.isEmpty
         guard want != isDetailed else { return }
@@ -170,6 +172,8 @@ final class Engine {
                 guard w.detailed else { return }
                 w.tickProcesses()
             }
+        } else if keepData {
+            w.queue.async { w.detailed = false }
         } else {
             w.queue.async {
                 w.detailed = false

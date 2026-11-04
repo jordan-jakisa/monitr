@@ -1,5 +1,8 @@
+import os
 import ServiceManagement
 import SwiftUI
+
+private let log = Logger(subsystem: "me.jordanjakisa.monitr", category: "helper")
 
 struct SettingsView: View {
     @Environment(Store.self) private var store
@@ -61,7 +64,8 @@ struct SettingsView: View {
                         Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
                     }
                 }
-                if let helperError { Text(helperError).foregroundStyle(.red).font(.callout) }
+                LabeledContent("Status", value: helperStatusText)
+                if let helperError { Text(helperError).foregroundStyle(.red).font(.callout).textSelection(.enabled) }
             } header: {
                 Text("System processes")
             } footer: {
@@ -89,14 +93,33 @@ struct SettingsView: View {
         }
     }
 
+    private var helperStatusText: String {
+        switch helperStatus {
+        case .enabled: "On"
+        case .requiresApproval: "Waiting for your approval in Login Items"
+        // macOS reports a never-registered service as "not found", so both read as Off.
+        case .notRegistered, .notFound: "Off"
+        @unknown default: "Unknown"
+        }
+    }
+
     private func setHelper(_ on: Bool) {
         helperError = nil
+        var failure: NSError?
         do {
             if on { try HelperClient.shared.register() } else { try HelperClient.shared.unregister() }
         } catch {
-            helperError = error.localizedDescription
+            failure = error as NSError
         }
+        HelperClient.shared.refreshStatus()
         helperStatus = HelperClient.shared.service.status
+        // Registering a daemon that still needs the user's approval throws "Operation not
+        // permitted" although it worked; only report errors that left it in the wrong state.
+        if let ns = failure, !(on && helperStatus == .requiresApproval) {
+            helperError = "\(ns.localizedDescription) (\(ns.domain) \(ns.code))"
+            log.error("helper \(on ? "register" : "unregister", privacy: .public) failed: \(ns.domain, privacy: .public) \(ns.code) \(ns.localizedDescription, privacy: .public)")
+        }
+        log.notice("helper status after \(on ? "register" : "unregister", privacy: .public): \(helperStatus.rawValue)")
         if on && helperStatus == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
     }
 

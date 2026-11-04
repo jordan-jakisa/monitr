@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// the window shows again.
     func windowDidChangeOcclusionState(_ notification: Notification) {
         guard let w = window else { return }
-        Engine.shared.setViewer("window", active: w.occlusionState.contains(.visible))
+        Engine.shared.setViewer("window", active: w.occlusionState.contains(.visible), keepData: true)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
