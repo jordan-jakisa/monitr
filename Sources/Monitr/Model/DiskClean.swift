@@ -158,16 +158,7 @@ final class DiskClean {
     /// Refuses places where deleting contents would lose personal files or break macOS.
     func addCustom(_ url: URL) throws {
         let p = url.standardizedFileURL.resolvingSymlinksInPath().path
-        let h = Self.home
-        let blocked = ["/", "/System", "/Library", "/Applications", "/Users", "/usr", "/bin", "/sbin", "/private", "/Volumes",
-                       h, h + "/Desktop", h + "/Documents", h + "/Downloads", h + "/Pictures", h + "/Movies", h + "/Music",
-                       h + "/Library", h + "/Library/Mobile Documents", h + "/Library/CloudStorage", h + "/Applications"]
-        if blocked.contains(p) || h.hasPrefix(p + "/") {
-            throw AddError.unsafe("\(Self.tilde(p)) holds personal files or parts of macOS, so it can't be a cleanup target.")
-        }
-        if p.hasPrefix("/System/") || p.hasPrefix("/usr/") || p.hasPrefix("/bin/") || p.hasPrefix("/sbin/") {
-            throw AddError.unsafe("Folders inside macOS can't be cleanup targets.")
-        }
+        if let reason = CleanupSafety.refusal(for: p, home: Self.home) { throw AddError.unsafe(reason) }
         guard !customPaths.contains(p) else { return }
         customPaths.append(p)
         UserDefaults.standard.set(customPaths, forKey: "diskCleanCustom")

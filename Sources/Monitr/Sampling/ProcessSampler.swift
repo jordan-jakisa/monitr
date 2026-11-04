@@ -199,7 +199,7 @@ final class ProcessSampler {
         let path = Self.path(of: pid)
         var shortName = withUnsafeBytes(of: comm) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
         if pid == 0 { shortName = "kernel_task" }
-        var name = Self.friendlyName(path.isEmpty ? shortName : (path as NSString).lastPathComponent)
+        var name = Naming.friendlyName(path.isEmpty ? shortName : (path as NSString).lastPathComponent)
         if name.isEmpty { name = "Process \(pid)" }
 
         // iOS Simulator processes (SpringBoard, backboardd...) belong together under the Simulator.
@@ -209,11 +209,11 @@ final class ProcessSampler {
         }
 
         // The app that "owns" this process: the responsible pid's outermost .app bundle.
-        var bundle = Self.outermostBundle(in: path)
+        var bundle = Naming.outermostBundle(in: path)
         let rpid = monitr_responsible_pid(pid)
         if rpid > 0, rpid != pid {
             let rpath = Self.path(of: rpid)
-            if let b = Self.outermostBundle(in: rpath) { bundle = b }
+            if let b = Naming.outermostBundle(in: rpath) { bundle = b }
         }
 
         let inSystemDir = path.hasPrefix("/System/") || path.hasPrefix("/usr/") || path.hasPrefix("/sbin/")
@@ -244,35 +244,11 @@ final class ProcessSampler {
         return n
     }
 
-    /// "com.apple.WebKit.WebContent" reads as "Web Content"; the app it belongs to is shown
-    /// beside it, so the reverse-DNS prefix adds nothing but noise.
-    static func friendlyName(_ raw: String) -> String {
-        let parts = raw.split(separator: ".")
-        guard parts.count >= 3, let first = parts.first, first.first?.isLowercase == true,
-              let last = parts.last, last.count > 1 else { return raw }
-        var out = ""
-        let chars = Array(last)
-        for (i, c) in chars.enumerated() {
-            if i > 0, c.isUppercase {
-                let prev = chars[i - 1]
-                let nextLower = i + 1 < chars.count && chars[i + 1].isLowercase
-                if prev.isLowercase || (prev.isUppercase && nextLower) { out.append(" ") }
-            }
-            out.append(c)
-        }
-        return out
-    }
-
     static let simulatorKey: String = NSWorkspace.shared
         .urlForApplication(withBundleIdentifier: "com.apple.iphonesimulator")?.path ?? "simulator"
 
     static func bundleBaseName(_ bundle: String) -> String {
         ((bundle as NSString).lastPathComponent as NSString).deletingPathExtension
-    }
-
-    static func outermostBundle(in path: String) -> String? {
-        guard let r = path.range(of: ".app/") else { return path.hasSuffix(".app") ? path : nil }
-        return String(path[..<r.lowerBound]) + ".app"
     }
 
     static func path(of pid: pid_t) -> String {

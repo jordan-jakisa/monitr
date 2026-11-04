@@ -111,7 +111,7 @@ struct DashboardView: View {
         guard let b = s.battery else { return "Whole Mac" }
         if s.charging { return "\(b)%, charging" }
         if s.onAC { return "Battery \(b)%" }
-        if let m = s.minutesLeft { return "\(b)%, \(Fmt.duration(Double(m) * 60)) left" }
+        if let m = s.minutesLeft { return "\(Fmt.duration(Double(m) * 60)) left" }
         return "Battery \(b)%"
     }
 

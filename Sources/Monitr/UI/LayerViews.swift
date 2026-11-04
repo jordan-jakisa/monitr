@@ -85,7 +85,7 @@ final class SparklineLayerView: NSView {
         let fromEnd = Int(((w - x) / step).rounded())
         let i = max(0, min(values.count - 1, values.count - 1 - fromEnd))
         let v = values[i]
-        let top = ceiling ?? Sparkline.niceCeiling(values.max() ?? 0)
+        let top = ceiling ?? ChartScale.niceCeiling(values.max() ?? 0)
         let px = w - CGFloat(values.count - 1 - i) * step
         let py = h - CGFloat(min(v / top, 1)) * (h - 2) - 1
         let ago = Int(Double(values.count - 1 - i) * secondsPerPoint)
@@ -167,7 +167,7 @@ final class SparklineLayerView: NSView {
         line.frame = bounds
         guard values.count > 1, bounds.width > 0 else { line.path = nil; fillMask.path = nil; return }
         let w = bounds.width, h = bounds.height, step = stepWidth
-        let top = ceiling ?? Sparkline.niceCeiling(values.max() ?? 0)
+        let top = ceiling ?? ChartScale.niceCeiling(values.max() ?? 0)
         let pts = values.enumerated().map { i, v in
             CGPoint(x: w - CGFloat(values.count - 1 - i) * step, y: h - CGFloat(min(v / top, 1)) * (h - 2) - 1)
         }
@@ -206,14 +206,6 @@ struct Sparkline: NSViewRepresentable {
         v.hoverFormat = hoverFormat
         v.secondsPerPoint = Double(Store.shared.interval)
         v.update(ring: ring, ceiling: ceiling)
-    }
-
-    /// Rounds the scale up to 1, 2 or 5 times a power of ten, so it rarely jumps.
-    static func niceCeiling(_ v: Double) -> Double {
-        guard v > 0 else { return 1 }
-        let mag = pow(10, floor(log10(v)))
-        for m in [1.0, 2, 5, 10] where v <= m * mag { return m * mag }
-        return 10 * mag
     }
 }
 

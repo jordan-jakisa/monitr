@@ -4,7 +4,7 @@ A small, native macOS utility that shows what your Mac is doing: every running p
 app it belongs to, and how much CPU, memory, power and network it uses, with live stats in the
 menu bar.
 
-Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no dependencies.
+Built for Apple Silicon Macs on macOS 15 or later. Swift and SwiftUI, no dependencies.
 
 ## What it does
 
@@ -76,6 +76,15 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
   minute-long checks. Stored in `~/Library/Application Support/Monitr/usage.json` for 90 days.
 - Because of those private interfaces and the need to see other apps' processes, Monitr cannot
   ship on the Mac App Store. It is built and run locally.
+
+## Tests
+
+```bash
+swift test
+```
+
+Covers the pure logic in `Sources/MonitrCore`: Disk clean's safety rules (which folders may
+never be emptied), process naming, `nettop` parsing, number formatting and chart history.
 
 ## Build and run
 
