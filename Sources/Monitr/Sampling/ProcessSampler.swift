@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 import CMonitr
@@ -201,6 +202,12 @@ final class ProcessSampler {
         var name = Self.friendlyName(path.isEmpty ? shortName : (path as NSString).lastPathComponent)
         if name.isEmpty { name = "Process \(pid)" }
 
+        // iOS Simulator processes (SpringBoard, backboardd...) belong together under the Simulator.
+        if path.contains("/CoreSimulator/") || shortName == "launchd_sim" {
+            return Identity(start: start, name: name, path: path, appKey: Self.simulatorKey, appName: "iOS Simulator",
+                            isAppBundle: true, isSystem: false)
+        }
+
         // The app that "owns" this process: the responsible pid's outermost .app bundle.
         var bundle = Self.outermostBundle(in: path)
         let rpid = monitr_responsible_pid(pid)
@@ -255,6 +262,9 @@ final class ProcessSampler {
         }
         return out
     }
+
+    static let simulatorKey: String = NSWorkspace.shared
+        .urlForApplication(withBundleIdentifier: "com.apple.iphonesimulator")?.path ?? "simulator"
 
     static func bundleBaseName(_ bundle: String) -> String {
         ((bundle as NSString).lastPathComponent as NSString).deletingPathExtension

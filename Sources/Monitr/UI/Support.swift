@@ -61,13 +61,23 @@ enum Fmt {
 /// cheaper than letting each redraw pick and scale a representation from a 1024 px icon.
 @MainActor
 enum Icons {
-    private static var cache: [String: CGImage] = [:]
+    private static var cache: [String: CGImage?] = [:]
     static let pixels = 72  // 36 pt at 2x, the largest size we show
 
+    /// The blank white icon macOS hands back for bundles that ship no icon of their own.
+    private static let genericData: Data? = render(NSWorkspace.shared.icon(for: .applicationBundle))?.dataProvider?.data as Data?
+
+    /// Nil when there is no real icon (not an app, or only the generic placeholder).
     static func bitmap(for key: String) -> CGImage? {
         if let i = cache[key] { return i }
         guard key.hasSuffix(".app") else { return nil }
-        let src = NSWorkspace.shared.icon(forFile: key)
+        var out = render(NSWorkspace.shared.icon(forFile: key))
+        if let d = out?.dataProvider?.data as Data?, d == genericData { out = nil }
+        cache[key] = out
+        return out
+    }
+
+    private static func render(_ src: NSImage) -> CGImage? {
         var rect = NSRect(x: 0, y: 0, width: pixels, height: pixels)
         guard let cg = src.cgImage(forProposedRect: &rect, context: nil, hints: nil),
               let ctx = CGContext(data: nil, width: pixels, height: pixels, bitsPerComponent: 8, bytesPerRow: 0,
@@ -75,9 +85,15 @@ enum Icons {
                                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         ctx.interpolationQuality = .high
         ctx.draw(cg, in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
-        let out = ctx.makeImage()
-        cache[key] = out
-        return out
+        return ctx.makeImage()
+    }
+
+    /// Symbol for anything without a real icon: macOS parts get the Apple logo.
+    static func symbol(for key: String) -> String {
+        if key == "system" || key.hasPrefix("/System/") { return "apple.logo" }
+        if key == "simulator" { return "iphone" }
+        if key.hasSuffix(".app") { return "app.dashed" }
+        return "terminal"
     }
 }
 
@@ -89,8 +105,8 @@ struct AppIcon: View {
             if let cg = Icons.bitmap(for: key) {
                 Image(decorative: cg, scale: 2).resizable()
             } else {
-                Image(systemName: key == "system" ? "apple.logo" : "terminal")
-                    .resizable().scaledToFit().padding(size * 0.12)
+                Image(systemName: Icons.symbol(for: key))
+                    .resizable().scaledToFit().padding(size * 0.14)
                     .foregroundStyle(.secondary)
             }
         }

@@ -9,6 +9,7 @@ struct SystemSnapshot: Equatable, Sendable {
     var memoryUsed: UInt64 = 0
     var memoryTotal: UInt64 = ProcessInfo.processInfo.physicalMemory
     var pressure: MemoryPressure = .normal
+    var swapUsed: UInt64 = 0       // RAM overflow written to the SSD
     var netIn: Double = 0          // bytes per second
     var netOut: Double = 0
     var temperature: Double?       // hottest CPU die, °C
@@ -92,6 +93,9 @@ final class SystemSampler {
             let app = UInt64(stats.internal_page_count) - min(UInt64(stats.internal_page_count), UInt64(stats.purgeable_count))
             s.memoryUsed = (app + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * pageSize
         }
+        var swap = xsw_usage()
+        var swapSize = MemoryLayout<xsw_usage>.size
+        if sysctlbyname("vm.swapusage", &swap, &swapSize, nil, 0) == 0 { s.swapUsed = swap.xsu_used }
         var level: Int32 = 1
         var size = MemoryLayout<Int32>.size
         if sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 {

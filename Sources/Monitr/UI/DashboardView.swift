@@ -5,16 +5,65 @@ struct DashboardView: View {
     var openApp: (String) -> Void
 
     var body: some View {
+        let worth = worthClosing
         ScrollView {
             VStack(alignment: .leading, spacing: Space.xxl) {
+                // What matters most first: is the Mac fine, then the numbers, then anything to act
+                // on, then who is using what.
+                StatusLine(status: status(worth))
                 metrics
+                if !worth.isEmpty { closable(worth).transition(.opacity) }
                 HStack(alignment: .top, spacing: Space.xxl) {
-                    topApps.frame(maxWidth: .infinity, alignment: .topLeading)
-                    closable.frame(maxWidth: .infinity, alignment: .topLeading)
+                    usageList(title: "Most CPU", detail: "Click an app to see its processes.",
+                              rows: store.busiest, value: { Fmt.percent($0.cpu) }, amount: { $0.cpu }, tint: .blue)
+                    usageList(title: "Most memory", detail: "What is holding your RAM right now.",
+                              rows: topMemory, value: { Fmt.bytes($0.memory) }, amount: { Double($0.memory) }, tint: .purple)
                 }
             }
             .padding(Space.xl)
+            .motion(Motion.reveal, value: worth.isEmpty)
         }
+    }
+
+    // MARK: Status line
+
+    private var worthClosing: [AppGroup] {
+        Array(store.apps.filter(\.suggestQuit).sorted { $0.memory > $1.memory }.prefix(5))
+    }
+
+    private var topMemory: [AppGroup] {
+        Array(store.apps.filter { $0.memory > 0 }.sorted { $0.memory > $1.memory }.prefix(7))
+    }
+
+    /// The one sentence that answers "is my Mac all right?", most urgent condition first.
+    private func status(_ worth: [AppGroup]) -> StatusLine.Status {
+        let s = store.system
+        let topCPU = store.busiest.first
+        let topMem = topMemory.first
+        if s.thermal == .serious || s.thermal == .critical {
+            let who = store.apps.max { $0.power < $1.power }
+            return .init(ok: false, title: "Your Mac is hot and slowing down",
+                         detail: who.map { "\($0.name) is drawing the most power (\(Fmt.watts($0.power)))." } ?? "Close heavy apps to let it cool.")
+        }
+        if s.pressure != .normal {
+            return .init(ok: false, title: "Memory is running short",
+                         detail: topMem.map { "\($0.name) is using \(Fmt.bytes($0.memory)). Closing it frees the most." } ?? "Close apps you are not using.")
+        }
+        if let b = s.battery, !s.onAC, b <= 15 {
+            return .init(ok: false, title: "Battery is low: \(b)%",
+                         detail: s.minutesLeft.map { "About \(Fmt.duration(Double($0) * 60)) left. Plug in soon." } ?? "Plug in soon.")
+        }
+        if s.cpu >= 80, let t = topCPU {
+            return .init(ok: false, title: "Your Mac is working hard",
+                         detail: "\(t.name) is the busiest at \(Fmt.percent(t.cpu)) CPU.")
+        }
+        if !worth.isEmpty {
+            let total = worth.reduce(UInt64(0)) { $0 + $1.memory }
+            return .init(ok: true, title: "Running smoothly",
+                         detail: "\(worth.count) unused \(worth.count == 1 ? "app is" : "apps are") holding \(Fmt.bytes(total)) you could free.")
+        }
+        return .init(ok: true, title: "Running smoothly",
+                     detail: store.apps.isEmpty ? "Measuring…" : "Nothing needs your attention.")
     }
 
     // MARK: Metrics row
@@ -26,7 +75,8 @@ struct DashboardView: View {
                    ring: store.cpuHistory, ceiling: 100, tint: .blue)
             Divider().padding(.vertical, Space.xs)
             Metric(kind: .memory, title: "Memory", value: Fmt.bytes(s.memoryUsed),
-                   detail: s.pressure == .normal ? "of \(Fmt.bytes(s.memoryTotal))" : pressureText(s.pressure),
+                   detail: s.pressure != .normal ? pressureText(s.pressure)
+                       : s.swapUsed >= 100 * 1024 * 1024 ? "RAM, +\(Fmt.bytes(s.swapUsed)) swap" : "of \(Fmt.bytes(s.memoryTotal)) RAM",
                    ring: store.memHistory, ceiling: 100, tint: .purple)
             Divider().padding(.vertical, Space.xs)
             Metric(kind: .network, title: "Network", value: "↓" + Fmt.rate(s.netIn), detail: "↑ " + Fmt.rate(s.netOut) + " up",
@@ -66,17 +116,18 @@ struct DashboardView: View {
         return "Battery \(b)%"
     }
 
-    // MARK: Busiest apps
+    // MARK: Usage lists
 
-    private var topApps: some View {
-        let top = store.busiest
-        let maxCPU = max(top.first?.cpu ?? 1, 1)
+    private func usageList(title: String, detail: String, rows: [AppGroup],
+                           value: @escaping (AppGroup) -> String, amount: @escaping (AppGroup) -> Double,
+                           tint: Color) -> some View {
+        let top = max(rows.map(amount).max() ?? 1, 0.0001)
         return VStack(alignment: .leading, spacing: Space.xs) {
-            SectionTitle(title: "Busiest apps", detail: "By CPU. Click one to see its processes.")
-            if top.isEmpty {
+            SectionTitle(title: title, detail: detail)
+            if rows.isEmpty {
                 ProgressView().controlSize(.small).padding(.vertical, Space.s)
             }
-            ForEach(top) { g in
+            ForEach(rows) { g in
                 Button { openApp(g.id) } label: {
                     HStack(spacing: Space.m) {
                         AppIcon(key: g.id, size: 20)
@@ -84,41 +135,33 @@ struct DashboardView: View {
                             HStack {
                                 Text(g.name).lineLimit(1)
                                 Spacer()
-                                Text(Fmt.percent(g.cpu)).monospacedDigit().foregroundStyle(.secondary)
+                                Text(value(g)).monospacedDigit().foregroundStyle(.secondary)
                             }
-                            UsageBar(fraction: g.cpu / maxCPU, tint: .blue).frame(height: 4)
+                            UsageBar(fraction: amount(g) / top, tint: tint).frame(height: 4)
                         }
                     }
                 }
                 .buttonStyle(RowButtonStyle())
                 .padding(.horizontal, -Space.s)
                 .help("Show \(g.name)'s processes")
-                .accessibilityLabel("\(g.name), \(Fmt.percent(g.cpu)) CPU")
+                .accessibilityLabel("\(g.name), \(value(g))")
                 .accessibilityHint("Shows its processes")
-                .transition(.opacity)
+                // Rows that drop out vanish at once, so nothing overlaps while the rest move up.
+                .transition(.asymmetric(insertion: .opacity, removal: .identity))
             }
         }
-        .motion(Motion.list, value: top.map(\.id))
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .motion(Motion.list, value: rows.map(\.id))
     }
 
-    // MARK: Running but not used
+    // MARK: Worth closing
 
-    private var closable: some View {
-        let items = Array(store.apps
-            .filter(\.suggestQuit)
-            .sorted { $0.memory > $1.memory }
-            .prefix(7))
-        return VStack(alignment: .leading, spacing: Space.xs) {
+    private func closable(_ items: [AppGroup]) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
             SectionTitle(
-                title: "Running but not used",
-                detail: "Apps you have not switched to in \(Int(Store.unusedAfter / 60)) minutes, and background work idle for \(Int(ProcessSampler.idleAfter / 60)) minutes."
+                title: "Worth closing",
+                detail: "Not used for \(Int(Store.unusedAfter / 60)) minutes, or idle in the background for \(Int(ProcessSampler.idleAfter / 60)). Biggest first."
             )
-            if items.isEmpty {
-                Label(store.apps.isEmpty ? "Measuring…" : "Nothing idle right now.", systemImage: "checkmark.circle")
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, Space.s)
-                    .transition(.opacity)
-            }
             ForEach(items) { g in
                 HStack(spacing: Space.m) {
                     AppIcon(key: g.id, size: 20)
@@ -133,10 +176,36 @@ struct DashboardView: View {
                     }
                 }
                 .padding(.vertical, Space.xs)
-                .transition(.opacity.combined(with: .move(edge: .trailing)))
+                .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .move(edge: .trailing))))
             }
         }
         .motion(Motion.list, value: items.map(\.id))
+    }
+}
+
+/// The Overview's opening line: one sentence on how the Mac is doing, and what to do if not.
+private struct StatusLine: View {
+    struct Status: Equatable {
+        let ok: Bool
+        let title: String
+        let detail: String
+    }
+    let status: Status
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.m) {
+            Image(systemName: status.ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.title2)
+                .foregroundStyle(status.ok ? Color.green : Color.orange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(status.title).font(.title2.weight(.semibold))
+                Text(status.detail).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, Space.xs)
+        .accessibilityElement(children: .combine)
+        .motion(Motion.reveal, value: status.title)
     }
 }
 

@@ -31,7 +31,8 @@ struct MetricDetailView: View {
         case .cpu:
             ChartHeader(value: Fmt.percent(s.cpu), caption: "of all cores in use", ring: store.cpuHistory, ceiling: 100, tint: .blue, peak: Fmt.percent)
         case .memory:
-            ChartHeader(value: Fmt.bytes(s.memoryUsed), caption: "used of \(Fmt.bytes(s.memoryTotal))", ring: store.memHistory, ceiling: 100, tint: .purple)
+            ChartHeader(value: Fmt.bytes(s.memoryUsed), caption: "of \(Fmt.bytes(s.memoryTotal)) RAM in use", ring: store.memHistory, ceiling: 100, tint: .purple,
+                        peak: { Fmt.bytes(UInt64($0 / 100 * Double(s.memoryTotal))) })
         case .network:
             ChartHeader(value: "↓" + Fmt.rate(s.netIn), caption: "down, ↑ \(Fmt.rate(s.netOut)) up", ring: store.netInHistory, ceiling: nil, tint: .teal, peak: Fmt.rate)
         case .temperature:
@@ -65,7 +66,7 @@ private struct ChartHeader: View {
                 Text(value).font(.system(size: 30, weight: .semibold, design: .rounded)).monospacedDigit()
                 Text(caption).foregroundStyle(.secondary)
             }
-            Sparkline(ring: ring, ceiling: ceiling, tint: tint)
+            Sparkline(ring: ring, ceiling: ceiling, tint: tint, hoverFormat: peak ?? { Fmt.percent($0) })
                 .frame(height: 120)
             Text(span).font(.caption).foregroundStyle(.secondary).monospacedDigit()
         }
@@ -107,25 +108,47 @@ private struct MemorySections: View {
 
     var body: some View {
         if let d {
-            Section("Where it goes") {
-                SegmentBar(parts: [
-                    (d.app, .purple), (d.wired, .orange), (d.compressed, .pink), (d.cached, .teal),
-                ], total: d.total)
-                Fact(label: "App memory", value: Fmt.bytes(d.app), note: "Used by apps and their processes", swatch: .purple)
-                Fact(label: "Wired", value: Fmt.bytes(d.wired), note: "Kept by macOS; can't be compressed or swapped", swatch: .orange)
-                Fact(label: "Compressed", value: Fmt.bytes(d.compressed), note: "Squeezed in RAM to make room", swatch: .pink)
-                Fact(label: "Cached files", value: Fmt.bytes(d.cached), note: "Recently used files; freed when needed", swatch: .teal)
-                Fact(label: "Free", value: Fmt.bytes(d.free), swatch: Color.primary.opacity(0.18))
+            let available = d.cached + d.free
+            Section {
+                MemoryBar(d: d)
+                Fact(label: "Apps", value: Fmt.bytes(d.app), note: "Memory apps and their processes are using", swatch: .purple)
+                Fact(label: "macOS (wired)", value: Fmt.bytes(d.wired), note: "Reserved by macOS itself; can't be freed", swatch: .orange)
+                Fact(label: "Compressed", value: Fmt.bytes(d.compressed),
+                     note: "App memory squeezed to fit in RAM; a lot of it means RAM is tight", swatch: .pink)
+                Fact(label: "Pressure", value: pressureText(Store.shared.system.pressure), note: pressureNote(Store.shared.system.pressure))
+            } header: {
+                SectionHeading(title: "RAM in use", value: "\(Fmt.bytes(d.used)) of \(Fmt.bytes(d.total))")
             }
-            Section("Swap") {
-                Fact(label: "Swap used", value: d.swapTotal == 0 ? "None" : "\(Fmt.bytes(d.swapUsed)) of \(Fmt.bytes(d.swapTotal))",
-                     note: "Memory written to the SSD when RAM runs short")
-                Fact(label: "Swapping now", value: swapActivity(d))
-                Fact(label: "Pressure", value: pressureText(Store.shared.system.pressure),
-                     note: "Green on the Mac's own scale means there is room to spare")
+            Section {
+                Fact(label: "Cached files", value: Fmt.bytes(d.cached),
+                     note: "Kept to open files faster; handed to apps the moment they need it", swatch: .teal)
+                Fact(label: "Free", value: Fmt.bytes(d.free), note: "Not used at all", swatch: Color.primary.opacity(0.18))
+            } header: {
+                SectionHeading(title: "RAM available", value: Fmt.bytes(available))
+            }
+            Section {
+                if d.swapTotal > 0 {
+                    SwapBar(used: d.swapUsed, total: d.swapTotal)
+                }
+                Fact(label: "In swap", value: d.swapTotal == 0 ? "None" : "\(Fmt.bytes(d.swapUsed)) of \(Fmt.bytes(d.swapTotal))",
+                     note: "App memory that did not fit in RAM, parked in a file on the SSD")
+                Fact(label: "Moving in and out now", value: swapActivity(d),
+                     note: "Constant movement here is what makes a Mac feel slow")
+            } header: {
+                SectionHeading(title: "Swap, on the SSD", value: Fmt.bytes(d.swapUsed))
+            } footer: {
+                FormNote("Swap is not RAM. macOS uses it as overflow when RAM is full, and it is many times slower. A little is normal; gigabytes plus steady movement mean the Mac needs more RAM for what is open.")
             }
         } else {
             Section { Pending() }
+        }
+    }
+
+    private func pressureNote(_ p: MemoryPressure) -> String {
+        switch p {
+        case .normal: "RAM is enough for what is open"
+        case .warning: "macOS is compressing and swapping to keep up. Quitting a big app helps."
+        case .critical: "RAM is exhausted; apps will slow down. Quit apps you are not using."
         }
     }
 
@@ -140,6 +163,73 @@ private struct MemorySections: View {
         case .warning: "Warning"
         case .critical: "Critical"
         }
+    }
+}
+
+/// A section title with its total on the right, like "In use      13.3 GB".
+private struct SectionHeading: View {
+    let title: String
+    let value: String
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(value).monospacedDigit().foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// All of RAM in one bar: what is in use, a gap, then what is available.
+private struct MemoryBar: View {
+    let d: MemoryDetail
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            GeometryReader { geo in
+                let total = Double(max(d.total, 1))
+                let w = geo.size.width - 6
+                HStack(spacing: 2) {
+                    seg(d.app, .purple, w, total)
+                    seg(d.wired, .orange, w, total)
+                    seg(d.compressed, .pink, w, total)
+                    Spacer().frame(width: 4)
+                    seg(d.cached, .teal, w, total)
+                    Rectangle().fill(Color.primary.opacity(0.18))
+                }
+            }
+            .frame(height: 12)
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+            HStack {
+                Text("RAM in use").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("Available").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Fmt.bytes(d.used)) in use, \(Fmt.bytes(d.cached + d.free)) available")
+    }
+
+    private func seg(_ v: UInt64, _ c: Color, _ w: CGFloat, _ total: Double) -> some View {
+        Rectangle().fill(c.opacity(0.85)).frame(width: max(0, w * CGFloat(Double(v) / total) - 2))
+    }
+}
+
+/// How full the swap file is, drawn apart from RAM so the two are never confused.
+private struct SwapBar: View {
+    let used: UInt64
+    let total: UInt64
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            UsageBar(fraction: Double(used) / Double(max(total, 1)), tint: .indigo).frame(height: 12)
+            HStack {
+                Text("Swap used").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Fmt.bytes(total)) swap file").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(Fmt.bytes(used)) of \(Fmt.bytes(total)) swap used")
     }
 }
 
@@ -195,17 +285,27 @@ private struct CPUSections: View {
 
 private struct CoreChart: View {
     let cores: [CoreLoad]
+    @State private var hovered: Int?
+
     var body: some View {
         HStack(alignment: .bottom, spacing: Space.s) {
             ForEach(cores) { c in
                 VStack(spacing: Space.xs) {
+                    // The value appears on hover, right above its bar.
+                    Text(Fmt.percent(c.load))
+                        .font(.caption.weight(.semibold)).monospacedDigit()
+                        .opacity(hovered == c.id ? 1 : 0)
                     UsageBar(fraction: c.load / 100, tint: c.efficiency ? .teal : .blue, vertical: true)
                         .frame(height: 64)
+                        .opacity(hovered == nil || hovered == c.id ? 1 : 0.55)
                     Text(c.efficiency ? "E" : "P").font(.caption2).foregroundStyle(.secondary)
                 }
-                .help("Core \(c.id + 1), \(c.efficiency ? "efficiency" : "performance"): \(Fmt.percent(c.load))")
+                .contentShape(Rectangle())
+                .onHover { inside in hovered = inside ? c.id : (hovered == c.id ? nil : hovered) }
+                .help("Core \(c.id + 1), \(c.efficiency ? "efficiency" : "performance")")
             }
         }
+        .motion(Motion.feedback, value: hovered)
         .padding(.vertical, Space.xs)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Per-core load")
@@ -389,46 +489,122 @@ private struct PowerSections: View {
 private struct TopAppsSection: View {
     @Environment(Store.self) private var store
     let kind: MetricKind
+    @State private var byProcess = false
 
     var body: some View {
-        let rows = ranked
-        Section(title) {
+        Section {
             if store.apps.isEmpty { Pending() }
-            ForEach(rows, id: \.0.id) { g, value in
-                HStack(spacing: Space.s) {
-                    AppIcon(key: g.id, size: 18)
-                    Text(g.name).lineLimit(1)
-                    Spacer()
-                    Text(value).monospacedDigit().foregroundStyle(.secondary)
+            if byProcess {
+                ForEach(topProcesses) { p in
+                    HStack(spacing: Space.s) {
+                        AppIcon(key: p.appKey, size: 18)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(p.name).lineLimit(1)
+                            Text(p.appName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Text(p.measured ? format(procValue(p)) : "–").monospacedDigit().foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                ForEach(topApps) { g in
+                    DisclosureGroup {
+                        ForEach(members(of: g)) { p in
+                            HStack {
+                                Text(p.name).lineLimit(1)
+                                Spacer()
+                                Text(p.measured ? format(procValue(p)) : "–").monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            .font(.callout)
+                        }
+                        Button("Show all \(g.count) processes of \(g.name)") { store.navigateTo = .app(g.id) }
+                            .buttonStyle(.link)
+                            .font(.callout)
+                    } label: {
+                        HStack(spacing: Space.s) {
+                            AppIcon(key: g.id, size: 18)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(g.name).lineLimit(1)
+                                Text("\(g.count) \(g.count == 1 ? "process" : "processes")").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(format(appValue(g))).monospacedDigit().foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
+        } header: {
+            HStack {
+                Text(title)
+                Spacer()
+                Picker("Show", selection: $byProcess) {
+                    Text("Apps").tag(false)
+                    Text("Processes").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+            }
+        } footer: {
+            FormNote(byProcess ? "Each process on its own, like Activity Monitor." : "Each app with all of its helper processes added up. Open one to see what is inside.")
         }
-        .motion(Motion.list, value: rows.map(\.0.id))
     }
 
     private var title: String {
         switch kind {
-        case .cpu: "Apps using the most CPU"
-        case .memory: "Apps using the most memory"
-        case .network: "Apps using the network now"
-        case .temperature, .power: "Apps using the most power"
+        case .cpu: "Using the most CPU"
+        case .memory: "Using the most memory"
+        case .network: "Using the network now"
+        case .temperature, .power: "Using the most power"
         }
     }
 
-    private var ranked: [(AppGroup, String)] {
-        let apps = store.apps
-        let list: [(AppGroup, String)]
+    private func appValue(_ g: AppGroup) -> Double {
         switch kind {
-        case .cpu:
-            list = apps.filter { $0.cpu >= 0.1 }.sorted { $0.cpu > $1.cpu }.map { ($0, Fmt.percent($0.cpu)) }
-        case .memory:
-            list = apps.filter { $0.memory > 0 }.sorted { $0.memory > $1.memory }.map { ($0, Fmt.bytes($0.memory)) }
-        case .network:
-            list = apps.filter { $0.netIn + $0.netOut >= 1 }.sorted { $0.netIn + $0.netOut > $1.netIn + $1.netOut }
-                .map { ($0, Fmt.traffic(down: $0.netIn, up: $0.netOut)) }
-        case .temperature, .power:
-            list = apps.filter { $0.power > 0.001 }.sorted { $0.power > $1.power }.map { ($0, Fmt.watts($0.power)) }
+        case .cpu: g.cpu
+        case .memory: Double(g.memory)
+        case .network: g.netIn + g.netOut
+        case .temperature, .power: g.power
         }
-        return Array(list.prefix(8))
+    }
+
+    private func procValue(_ p: ProcInfo) -> Double {
+        switch kind {
+        case .cpu: p.cpu
+        case .memory: Double(p.memory)
+        case .network: p.netIn + p.netOut
+        case .temperature, .power: p.power ?? 0
+        }
+    }
+
+    private func format(_ v: Double) -> String {
+        switch kind {
+        case .cpu: Fmt.percent(v)
+        case .memory: Fmt.bytes(UInt64(max(v, 0)))
+        case .network: Fmt.rate(v)
+        case .temperature, .power: Fmt.watts(v)
+        }
+    }
+
+    private var threshold: Double {
+        switch kind {
+        case .cpu: 0.1
+        case .memory: 1
+        case .network: 1
+        case .temperature, .power: 0.001
+        }
+    }
+
+    private var topApps: [AppGroup] {
+        Array(store.apps.filter { appValue($0) >= threshold }.sorted { appValue($0) > appValue($1) }.prefix(8))
+    }
+
+    private var topProcesses: [ProcInfo] {
+        Array(store.processes.filter { $0.measured && procValue($0) >= threshold }
+            .sorted { procValue($0) > procValue($1) }.prefix(15))
+    }
+
+    private func members(of g: AppGroup) -> [ProcInfo] {
+        Array(store.processes.filter { $0.appKey == g.id }.sorted { procValue($0) > procValue($1) }.prefix(6))
     }
 }

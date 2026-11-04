@@ -199,6 +199,10 @@ final class Store {
     }
 
     private(set) var detail: MetricDetailSnapshot?
+    /// The sidebar search: filters the sidebar's apps and the process tables.
+    var search = ""
+    /// Asks the window to show a page (from menus and shortcuts outside the SwiftUI tree).
+    var navigateTo: Pane?
 
     func apply(detail d: MetricDetailSnapshot) {
         if detail != d { detail = d }
@@ -231,7 +235,8 @@ final class Store {
         let entries = apps.sorted { a, b in
             let ra = rank(a), rb = rank(b)
             return ra != rb ? ra < rb : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }.map { SidebarEntry(key: $0.id, name: $0.name, flag: $0.suggestQuit ? $0.statusText?.0 : nil) }
+        }.map { SidebarEntry(key: $0.id, name: $0.name, flag: $0.suggestQuit ? $0.statusText?.0 : nil,
+                     isApp: runningApps[$0.id]?.regular == true) }
         if entries != sidebar { sidebar = entries }
     }
 
@@ -384,4 +389,6 @@ struct SidebarEntry: Equatable, Identifiable {
     let key: String
     let name: String
     let flag: String?
+    /// An app with a window or Dock icon that you opened, as opposed to background work.
+    let isApp: Bool
 }

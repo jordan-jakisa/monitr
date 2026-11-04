@@ -12,13 +12,12 @@ struct ProcessesView: View {
     var onBack: () -> Void = {}
     @State private var appName = ""
 
-    @State private var search = ""
     @State private var filter: ProcFilter = .all
     @State private var sortOrder = [KeyPathComparator(\ProcInfo.cpu, order: .reverse)]
     @State private var selection = Set<pid_t>()
 
     private var rows: [ProcInfo] {
-        let q = search.trimmingCharacters(in: .whitespaces)
+        let q = store.search.trimmingCharacters(in: .whitespaces)
         var list = store.processes.filter { p in
             if let appKey, p.appKey != appKey { return false }
             switch filter {
@@ -56,29 +55,21 @@ struct ProcessesView: View {
                     AppHeader(group: g)
                     Divider()
                 }
+                ScopeBar(filter: $filter, count: rows.count)
+                Divider()
                 table(rows)
             }
         }
         .motion(Motion.reveal, value: gone)
         .onChange(of: group?.name, initial: true) { _, name in if let name { appName = name } }
-        .searchable(text: $search, placement: .toolbar, prompt: "Process, app or pid")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("Filter", selection: $filter.animation(reduceMotion ? nil : Motion.reveal)) {
-                    ForEach(ProcFilter.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .fixedSize()
-            }
-        }
-        .navigationSubtitle(gone ? "" : "\(rows.count) processes")
+        .navigationSubtitle(gone ? "" : store.search.isEmpty ? "\(rows.count) processes" : "\(rows.count) matching “\(store.search)”")
         .navigationTitle(appKey == nil ? "All processes" : (appName.isEmpty ? "App" : appName))
     }
 
     @ViewBuilder
     private func emptyState() -> some View {
-        if !search.trimmingCharacters(in: .whitespaces).isEmpty {
-            ContentUnavailableView.search(text: search)
+        if !store.search.trimmingCharacters(in: .whitespaces).isEmpty {
+            ContentUnavailableView.search(text: store.search)
         } else {
             switch filter {
             case .all:
@@ -229,4 +220,27 @@ extension ProcInfo {
 
     var netTotal: Double { netIn + netOut }
     var powerSort: Double { power ?? -1 }
+}
+
+/// Filters for the table, under the toolbar where they have room, with the count beside them.
+private struct ScopeBar: View {
+    @Binding var filter: ProcFilter
+    let count: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            Picker("Show", selection: $filter.animation(reduceMotion ? nil : Motion.reveal)) {
+                ForEach(ProcFilter.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            Spacer()
+            Text("\(count) \(count == 1 ? "process" : "processes")")
+                .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+        }
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.s)
+    }
 }

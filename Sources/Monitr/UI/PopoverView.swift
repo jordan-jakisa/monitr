@@ -76,7 +76,7 @@ private struct Stat: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value).font(.system(.title3, design: .rounded).weight(.semibold))
+            Text(value).font(.system(size: 22, weight: .semibold, design: .rounded))
                 .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
             Sparkline(ring: ring, ceiling: ceiling, tint: tint).frame(height: 28)
         }
