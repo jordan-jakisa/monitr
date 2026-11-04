@@ -1,47 +1,99 @@
-# Monitr
+<p align="center">
+  <img src="docs/images/icon.png" width="128" height="128" alt="Monitr app icon: a radar on dark green">
+</p>
 
-A small, native macOS utility that shows what your Mac is doing: every running process, which
-app it belongs to, and how much CPU, memory, power and network it uses, with live stats in the
-menu bar.
+<h1 align="center">Monitr</h1>
+
+<p align="center">
+  See what your Mac is doing, which app is behind it, and what you can close.<br>
+  A small native macOS app with live stats in the menu bar.
+</p>
+
+<p align="center">
+  <img src="docs/images/overview.png" width="900" alt="Monitr's Overview: a status line, five live metrics with charts, apps worth closing, and the apps using the most CPU and memory">
+</p>
 
 Built for Apple Silicon Macs on macOS 15 or later. Swift and SwiftUI, no dependencies.
 
-## What it does
+## Overview
 
-- **Processes:** every running process with CPU, memory, power draw, network rate and status.
-  Sort any column, search by process, app or pid, and filter to non-critical, idle or system
-  processes.
-- **The app behind each process:** helpers, renderers and command-line tools are grouped under
-  the app that launched them (the "responsible" app macOS tracks). Pick an app in the sidebar to
-  see only its processes.
-- **Overview:** CPU, memory, network, CPU temperature and whole-Mac power, each with a short
-  history, plus the busiest apps. Click any of the five for its detail page:
-  - **Memory:** app, wired, compressed and cached memory, swap used and swap activity, pressure.
-  - **CPU:** apps versus macOS share, load per core (performance and efficiency), load average,
-    uptime.
-  - **Network:** data used today, in the last 7 and 30 days, per day for two weeks and per app,
-    plus each connection's totals since the Mac started.
-  - **Temperature:** heat level and every sensor, grouped (CPU cores, chip, storage, battery).
-  - **Power and battery:** charging status, time to full or empty, adapter, what the Mac is
-    drawing, battery health (maximum capacity, cycles), voltage and current.
-- **Running but not used:** apps you have not switched to in 15 minutes and background
-  processes idle for 2 minutes, sorted by memory, each with a Quit button.
-- **One-click stop:** Stop or Quit next to every process you own. Apps get a normal quit so they
-  can save; other processes get SIGTERM. Option-click forces it. macOS processes and other
-  users' processes have no stop button.
-- **Menu bar:** choose any of CPU, memory, temperature, network, power and battery. Click for a
-  panel with the key numbers and busiest apps.
-- **Prevent sleep:** keep the Mac awake until turned off or for 30 minutes to 4 hours,
-  optionally with the display on, from the menu bar panel or its right-click menu. A cup shows in
-  the menu bar while it is on. Closing a MacBook's lid still sleeps it unless an external display
-  is connected.
-- **Quick quit:** a saved list of apps to quit together in one click (from the sidebar, the
-  menu bar panel or its menu). Apps get a normal quit, so they can ask to save.
-- **Disk clean:** sizes and clears regenerable data (app caches, logs, Xcode build data,
-  simulator caches, and optionally Gradle and npm caches) plus folders you add. Items move to
-  the Trash, so nothing is lost until you empty it. Personal folders and macOS folders can't be
-  added.
-- **Open at login:** a switch in Settings.
+The window opens on one sentence about how your Mac is doing, most urgent first: too hot, short
+on memory, low battery, working hard, or running smoothly. Below it are CPU, memory, network,
+temperature and power with a live chart each, apps worth closing when there are any, and the
+apps using the most CPU and memory. Click any metric for its detail page, or any app for its
+processes.
+
+## Detail pages
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/memory.png" alt="Memory page: RAM in use split into apps, macOS and compressed, then RAM available, then swap on the SSD"></td>
+    <td width="50%"><img src="docs/images/network.png" alt="Network page: live rate chart and data used today, in the last 7 and 30 days"></td>
+  </tr>
+  <tr>
+    <td><b>Memory.</b> RAM in use (apps, macOS, compressed), RAM available (cached files, free) and swap on the SSD, each in plain words, with pressure.</td>
+    <td><b>Network.</b> Data used today, in the last 7 and 30 days, per day for two weeks and per app, plus each connection's totals.</td>
+  </tr>
+</table>
+
+- **CPU:** apps versus macOS share, load on every core (efficiency and performance, value on
+  hover), load average and uptime.
+- **Temperature:** heat level and every sensor, grouped into CPU cores, chip, storage and battery.
+- **Power and battery:** charging status, time to full or empty, adapter, what the Mac is
+  drawing, and battery health (maximum capacity, cycles, voltage, current).
+
+Every detail page lists what is using the most of it, by app or by single process; apps expand
+to show their processes. Hover a chart to read any point.
+
+## Every process, and the app behind it
+
+<p align="center">
+  <img src="docs/images/processes.png" width="900" alt="All processes table with CPU, memory, power and network columns and Stop buttons">
+</p>
+
+- Each process shows its CPU, memory, power draw and network rate, and the app it belongs to:
+  helpers, renderers and command-line tools are grouped under the app that launched them.
+  Helpers get readable names ("Web Content", not `com.apple.WebKit.WebContent`).
+- Search from the sidebar, sort any column, and filter to non-critical, idle or system
+  processes. The sidebar lists the apps you opened first and background items below.
+- **One-click Stop:** apps get a normal quit so they can save; other processes get SIGTERM.
+  Option-click forces it. If something refuses to quit, Monitr says why and offers Force Quit.
+  macOS's own processes have no Stop button.
+
+## Menu bar
+
+<img src="docs/images/menu-bar-panel.png" width="280" align="right" alt="Menu bar panel: CPU, memory, network and temperature with charts, the busiest apps, and Prevent sleep">
+
+Pick any of CPU, memory, temperature, network, power and battery for the menu bar. Click it for
+a panel with the key numbers, the busiest apps, Prevent sleep and Quick quit.
+
+**Prevent sleep** keeps the Mac awake until turned off or for 30 minutes to 4 hours, optionally
+with the display on. A cup shows in the menu bar while it is on. Closing a MacBook's lid still
+sleeps it unless an external display is connected.
+
+<br clear="right">
+
+## Tools
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/disk-clean.png" alt="Disk clean: safe-to-clear targets with sizes, your own folders, and a Move to Trash button"></td>
+    <td width="50%"><img src="docs/images/quick-quit.png" alt="Quick quit: a list of apps to quit together"></td>
+  </tr>
+  <tr>
+    <td><b>Disk clean.</b> Measures regenerable data (app caches, logs, Xcode build data, simulator caches, and optionally Gradle and npm caches) plus folders you add, then moves what you pick to the Trash. Nothing is lost until you empty it, and personal or macOS folders can't be added.</td>
+    <td><b>Quick quit.</b> A saved list of apps to quit together in one click, from the window or the menu bar panel. Each gets a normal quit, so it can still ask to save.</td>
+  </tr>
+</table>
+
+## Settings
+
+<p align="center">
+  <img src="docs/images/settings.png" width="760" alt="Settings: open at login, update interval, menu bar stats and system process usage">
+</p>
+
+Open at login, the update interval, which stats show in the menu bar, and an optional helper
+that adds CPU and memory for macOS's own processes (see Limits).
 
 ## How it stays light
 
