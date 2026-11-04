@@ -20,6 +20,7 @@ let package = Package(
                 .linkedFramework("SwiftUI"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("IOKit"),
+                .linkedFramework("SystemConfiguration"),
             ]
         ),
     ],

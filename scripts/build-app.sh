@@ -13,7 +13,7 @@ cp "$BIN" "$APP/Contents/MacOS/Monitr"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/" \
   && /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist"
-strip -x "$APP/Contents/MacOS/Monitr"
+[[ -z "${NOSTRIP:-}" ]] && strip -x "$APP/Contents/MacOS/Monitr"
 codesign --force --sign - --options runtime "$APP"
 echo "Built $APP ($(du -sh "$APP" | cut -f1))"
 

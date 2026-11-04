@@ -5,7 +5,7 @@ struct PopoverView: View {
     @Environment(Store.self) private var store
     let openWindow: () -> Void
 
-    private var topApps: [AppGroup] { Array(store.apps.sorted { $0.cpu > $1.cpu }.prefix(5)) }
+    private var topApps: [AppGroup] { Array(store.busiest.prefix(5)) }
 
     var body: some View {
         let s = store.system

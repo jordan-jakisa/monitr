@@ -8,33 +8,24 @@ enum Pane: Hashable {
 struct MainView: View {
     @Environment(Store.self) private var store
     @State private var pane: Pane? = .overview
-    @State private var appSearch = ""
-
-    /// Sidebar apps in a stable order (user apps A to Z, then loose processes, then macOS)
-    /// so rows don't jump around as numbers change.
-    private var sidebarApps: [AppGroup] {
-        store.apps.sorted { a, b in
-            let ra = rank(a), rb = rank(b)
-            return ra != rb ? ra < rb : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }
-    }
 
     @ViewBuilder
     private func detail(for pane: Pane) -> some View {
         switch pane {
         case .overview:
-            DashboardView { self.pane = .app($0) }.navigationTitle("Overview")
+            NavigationStack {
+                DashboardView { self.pane = .app($0) }
+                    .navigationTitle("Overview")
+                    .navigationDestination(for: MetricKind.self) { MetricDetailView(kind: $0) }
+            }
         case .processes:
             ProcessesView(appKey: nil).navigationTitle("All processes")
         case .app(let key):
             ProcessesView(appKey: key, onBack: { self.pane = .overview })
-                .navigationTitle(store.apps.first { $0.id == key }?.name ?? "App")
         case .settings:
             SettingsView().navigationTitle("Settings")
         }
     }
-
-    private func rank(_ g: AppGroup) -> Int { g.isSystem ? 2 : (g.isAppBundle ? 0 : 1) }
 
     var body: some View {
         NavigationSplitView {
@@ -44,20 +35,10 @@ struct MainView: View {
                     Label("All processes", systemImage: "list.bullet").tag(Pane.processes)
                 }
                 Section("Apps") {
-                    ForEach(sidebarApps) { g in
-                        HStack(spacing: Space.s) {
-                            AppIcon(key: g.id, size: 16)
-                            Text(g.name).lineLimit(1)
-                            Spacer(minLength: Space.xs)
-                            if g.nonCritical {
-                                Circle().fill(.orange).frame(width: 6, height: 6)
-                                    .help(g.statusText?.0 ?? "")
-                                    .accessibilityLabel(g.statusText?.0 ?? "")
-                            }
-                            Text(Fmt.percent(g.cpu))
-                                .font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                        }
-                        .tag(Pane.app(g.id))
+                    ForEach(store.sidebar) { e in
+                        SidebarRow(key: e.key, name: e.name, flag: e.flag)
+                            .equatable()
+                            .tag(Pane.app(e.key))
                     }
                 }
             }
@@ -86,5 +67,26 @@ struct MainView: View {
             .motion(Motion.reveal, value: store.notice?.id)
         }
         .frame(minWidth: 920, minHeight: 580)
+    }
+}
+
+/// Only its inputs (not live CPU) are compared, so the sidebar re-renders a row only when the
+/// app arrives, leaves or changes state; numbers live on the Overview and app pages.
+private struct SidebarRow: View, Equatable {
+    let key: String
+    let name: String
+    let flag: String?
+
+    var body: some View {
+        HStack(spacing: Space.s) {
+            AppIcon(key: key, size: 16)
+            Text(name).lineLimit(1)
+            Spacer(minLength: Space.xs)
+            if let flag {
+                Circle().fill(.orange).frame(width: 6, height: 6)
+                    .help(flag)
+                    .accessibilityLabel(flag)
+            }
+        }
     }
 }

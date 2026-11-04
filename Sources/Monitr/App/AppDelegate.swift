@@ -39,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        Engine.shared.flush()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     private func launchedAsLoginItem() -> Bool {
@@ -79,7 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Engine.shared.setViewer("window", active: w.occlusionState.contains(.visible))
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        Store.shared.windowKey = true
+        Store.shared.publishNow()
+    }
+
+    func windowDidResignKey(_ notification: Notification) { Store.shared.windowKey = false }
+
     func windowWillClose(_ notification: Notification) {
+        Store.shared.windowKey = false
         Engine.shared.setViewer("window", active: false)
         // Drop the whole view tree; it is rebuilt on next open. Keeps idle memory small.
         window?.contentViewController = nil

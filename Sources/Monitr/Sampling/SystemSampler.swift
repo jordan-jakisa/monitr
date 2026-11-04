@@ -37,6 +37,8 @@ final class SystemSampler {
     private let tempAvailable = monitr_temp_open() == 0
     private var batteryService: io_service_t = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
     private var slowCounter = 0
+    /// Bytes through physical interfaces since boot, from the last sample.
+    private(set) var interfaceTotals: (rx: UInt64, tx: UInt64)?
     private var cached = SystemSnapshot()
 
     deinit { if batteryService != 0 { IOObjectRelease(batteryService) } }
@@ -47,14 +49,13 @@ final class SystemSampler {
         memory(into: &s)
         network(into: &s)
         s.thermal = ProcessInfo.processInfo.thermalState
-        // Sensors and the battery change slowly; read them every other tick.
-        if slowCounter % 2 == 0 {
-            if tempAvailable {
-                let t = monitr_cpu_temp()
-                s.temperature = t > 0 ? t : nil
-            }
-            power(into: &s)
+        // Sensors and power change slowly; temperature (two dozen sensor reads) every third
+        // tick, power every other.
+        if slowCounter % 3 == 0, tempAvailable {
+            let t = monitr_cpu_temp()
+            s.temperature = t > 0 ? t : nil
         }
+        if slowCounter % 2 == 0 { power(into: &s) }
         if slowCounter % 15 == 0 { battery(into: &s) }
         slowCounter &+= 1
         cached = s
@@ -129,6 +130,7 @@ final class SystemSampler {
             s.netOut = Double(tx - last.tx) / secs
         }
         lastNet = (rx, tx, now)
+        interfaceTotals = (rx, tx)
     }
 
     /// Physical interfaces only, so VPN tunnels do not double-count traffic.

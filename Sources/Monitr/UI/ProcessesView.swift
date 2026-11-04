@@ -71,6 +71,7 @@ struct ProcessesView: View {
             }
         }
         .navigationSubtitle(gone ? "" : "\(rows.count) processes")
+        .navigationTitle(appKey == nil ? "All processes" : (appName.isEmpty ? "App" : appName))
     }
 
     @ViewBuilder

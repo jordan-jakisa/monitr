@@ -15,7 +15,15 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
   the app that launched them (the "responsible" app macOS tracks). Pick an app in the sidebar to
   see only its processes.
 - **Overview:** CPU, memory, network, CPU temperature and whole-Mac power, each with a short
-  history, plus the busiest apps.
+  history, plus the busiest apps. Click any of the five for its detail page:
+  - **Memory:** app, wired, compressed and cached memory, swap used and swap activity, pressure.
+  - **CPU:** apps versus macOS share, load per core (performance and efficiency), load average,
+    uptime.
+  - **Network:** data used today, in the last 7 and 30 days, per day for two weeks and per app,
+    plus each connection's totals since the Mac started.
+  - **Temperature:** heat level and every sensor, grouped (CPU cores, chip, storage, battery).
+  - **Power and battery:** charging status, time to full or empty, adapter, what the Mac is
+    drawing, battery health (maximum capacity, cycles), voltage and current.
 - **Running but not used:** apps you have not switched to in 30 minutes and background
   processes idle for 5 minutes, sorted by memory, each with a Quit button.
 - **One-click stop:** Stop or Quit next to every process you own. Apps get a normal quit so they
@@ -28,13 +36,18 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
 ## How it stays light
 
 - With the window and panel closed, Monitr reads only whole-Mac counters, one pass every 2
-  seconds on a low-priority queue with timer leeway so macOS can batch the wakeups. About 0.6%
-  CPU and 40 MB on an M4 MacBook Air.
-- Per-process figures are measured only while the window or the menu bar panel is open, and the
-  whole view tree is released when they close.
-- Everything comes from system calls in-process: `sysctl`, `proc_pid_rusage`, Mach host
-  statistics, IOKit and the kernel's network statistics. No `ps`, `top` or `nettop`
-  subprocesses.
+  seconds on a low-priority queue with timer leeway so macOS can batch the wakeups. About 0.7%
+  CPU and 45 MB on an M4 MacBook Air, data-usage tracking included.
+- Per-process figures are measured only while the window or the menu bar panel is visible.
+  The window refreshes every 2 seconds while it is the active window and every 6 seconds when
+  it sits behind other apps (about 4% CPU); covered or minimised, it pauses.
+- Charts and bars are Core Animation layers, so their motion runs in the system compositor
+  rather than costing Monitr work on every frame.
+- CPU, memory, energy, temperature and battery come from system calls in-process (`sysctl`,
+  `proc_pid_rusage`, Mach host statistics, IOKit). Per-app network uses one-shot `nettop`
+  snapshots (about 10 ms of CPU each): every few seconds while the window is open, once a
+  minute otherwise. macOS gives full per-app network counters only to Apple's own entitled
+  tools; an app reading them directly misses most traffic.
 - The menu bar label is drawn once per change into a small bitmap.
 
 ## Limits
@@ -45,8 +58,9 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
 - **Temperature** is the hottest CPU die sensor, read through a private IOKit HID interface.
   macOS has no per-process temperature; per-process power is the closest measure of which
   process is heating the Mac.
-- **Per-process network** uses the private NetworkStatistics framework, the same source as
-  `nettop`.
+- **Data usage** is counted from when Monitr first ran, and only while it is running. The
+  whole-Mac total is exact; per-app totals can miss traffic from an app that quits between
+  minute-long checks. Stored in `~/Library/Application Support/Monitr/usage.json` for 90 days.
 - Because of those private interfaces and the need to see other apps' processes, Monitr cannot
   ship on the Mac App Store. It is built and run locally.
 

@@ -22,20 +22,20 @@ struct DashboardView: View {
     private var metrics: some View {
         let s = store.system
         return HStack(alignment: .top, spacing: 0) {
-            Metric(title: "CPU", value: Fmt.percent(s.cpu), detail: thermalText(s.thermal),
+            Metric(kind: .cpu, title: "CPU", value: Fmt.percent(s.cpu), detail: thermalText(s.thermal),
                    ring: store.cpuHistory, ceiling: 100, tint: .blue)
             Divider().padding(.vertical, Space.xs)
-            Metric(title: "Memory", value: Fmt.bytes(s.memoryUsed),
+            Metric(kind: .memory, title: "Memory", value: Fmt.bytes(s.memoryUsed),
                    detail: s.pressure == .normal ? "of \(Fmt.bytes(s.memoryTotal))" : pressureText(s.pressure),
                    ring: store.memHistory, ceiling: 100, tint: .purple)
             Divider().padding(.vertical, Space.xs)
-            Metric(title: "Network", value: "↓" + Fmt.rate(s.netIn), detail: "↑ " + Fmt.rate(s.netOut) + " up",
+            Metric(kind: .network, title: "Network", value: "↓" + Fmt.rate(s.netIn), detail: "↑ " + Fmt.rate(s.netOut) + " up",
                    ring: store.netInHistory, ceiling: nil, tint: .teal)
             Divider().padding(.vertical, Space.xs)
-            Metric(title: "Temperature", value: s.temperature.map(Fmt.temp) ?? "–", detail: "Hottest core",
+            Metric(kind: .temperature, title: "Temperature", value: s.temperature.map(Fmt.temp) ?? "–", detail: "Hottest core",
                    ring: store.tempHistory, ceiling: 100, tint: .orange)
             Divider().padding(.vertical, Space.xs)
-            Metric(title: "Power", value: s.power.map(Fmt.watts) ?? "–", detail: batteryText(s),
+            Metric(kind: .power, title: "Power", value: s.power.map(Fmt.watts) ?? "–", detail: batteryText(s),
                    ring: store.powerHistory, ceiling: nil, tint: .green)
         }
     }
@@ -69,7 +69,7 @@ struct DashboardView: View {
     // MARK: Busiest apps
 
     private var topApps: some View {
-        let top = Array(store.apps.sorted { $0.cpu > $1.cpu }.prefix(7))
+        let top = store.busiest
         let maxCPU = max(top.first?.cpu ?? 1, 1)
         return VStack(alignment: .leading, spacing: Space.xs) {
             SectionTitle(title: "Busiest apps", detail: "By CPU. Click one to see its processes.")
@@ -86,13 +86,15 @@ struct DashboardView: View {
                                 Spacer()
                                 Text(Fmt.percent(g.cpu)).monospacedDigit().foregroundStyle(.secondary)
                             }
-                            UsageBar(fraction: g.cpu / maxCPU, tint: .blue)
+                            UsageBar(fraction: g.cpu / maxCPU, tint: .blue).frame(height: 4)
                         }
                     }
                 }
                 .buttonStyle(RowButtonStyle())
                 .padding(.horizontal, -Space.s)
                 .help("Show \(g.name)'s processes")
+                .accessibilityLabel("\(g.name), \(Fmt.percent(g.cpu)) CPU")
+                .accessibilityHint("Shows its processes")
                 .transition(.opacity)
             }
         }
@@ -150,26 +152,8 @@ private struct SectionTitle: View {
     }
 }
 
-/// A thin track with a fill that eases to its new length.
-struct UsageBar: View {
-    let fraction: Double
-    let tint: Color
-    var body: some View {
-        Capsule()
-            .fill(Color.primary.opacity(0.06))
-            .frame(height: 4)
-            .overlay(alignment: .leading) {
-                GeometryReader { geo in
-                    Capsule()
-                        .fill(tint.opacity(0.8))
-                        .frame(width: max(4, geo.size.width * min(max(fraction, 0), 1)))
-                }
-            }
-            .motion(Motion.data, value: fraction)
-    }
-}
-
 private struct Metric: View {
+    let kind: MetricKind
     let title: String
     let value: String
     let detail: String
@@ -178,8 +162,20 @@ private struct Metric: View {
     let tint: Color
 
     var body: some View {
+        NavigationLink(value: kind) { content }
+            .buttonStyle(MetricButtonStyle())
+            .help("Show \(title.lowercased()) details")
+            .accessibilityLabel("\(title), \(value), \(detail)")
+            .accessibilityHint("Shows \(title.lowercased()) details")
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
-            Text(title).font(.subheadline).foregroundStyle(.secondary)
+            HStack(spacing: Space.xs) {
+                Text(title).font(.subheadline).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
             Text(value)
                 .font(.system(size: 26, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -190,9 +186,31 @@ private struct Metric: View {
                 .frame(height: 44)
                 .padding(.top, Space.s)
         }
-        .padding(.horizontal, Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The whole metric column is the click target, with a soft highlight on hover and press.
+private struct MetricButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { MetricBody(configuration: configuration) }
+
+    private struct MetricBody: View {
+        let configuration: ButtonStyle.Configuration
+        @State private var hovering = false
+        var body: some View {
+            configuration.label
+                .padding(Space.m)
+                .background(
+                    RoundedRectangle(cornerRadius: Radius.notice, style: .continuous)
+                        .fill(Color.primary.opacity(configuration.isPressed ? 0.08 : hovering ? 0.04 : 0))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: Radius.notice, style: .continuous))
+                .onHover { hovering = $0 }
+                .motion(Motion.feedback, value: hovering)
+                .motion(Motion.feedback, value: configuration.isPressed)
+                .padding(.horizontal, Space.xs)
+        }
     }
 }
 

@@ -17,9 +17,14 @@ extern double IOHIDEventGetFloatValue(IOHIDEventRef, int32_t);
 #define kTempEvent 15
 #define kMaxDie 64
 
+#define kMaxAll 160
+
 static IOHIDEventSystemClientRef client;
 static IOHIDServiceClientRef dieSensors[kMaxDie];
 static int dieCount;
+static IOHIDServiceClientRef allSensors[kMaxAll];
+static char allNames[kMaxAll][64];
+static int allCount;
 
 int monitr_temp_open(void) {
     if (client) return dieCount > 0 ? 0 : -1;
@@ -38,14 +43,19 @@ int monitr_temp_open(void) {
     CFArrayRef services = IOHIDEventSystemClientCopyServices(client);
     if (!services) return -1;
     char name[128];
-    for (CFIndex i = 0; i < CFArrayGetCount(services) && dieCount < kMaxDie; i++) {
+    for (CFIndex i = 0; i < CFArrayGetCount(services); i++) {
         IOHIDServiceClientRef s = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, i);
         CFStringRef product = IOHIDServiceClientCopyProperty(s, CFSTR("Product"));
         if (!product) continue;
-        if (CFStringGetCString(product, name, sizeof name, kCFStringEncodingUTF8) &&
-            (strstr(name, "tdie") || strstr(name, "CPU"))) {
+        if (!CFStringGetCString(product, name, sizeof name, kCFStringEncodingUTF8)) { CFRelease(product); continue; }
+        if ((strstr(name, "tdie") || strstr(name, "CPU")) && dieCount < kMaxDie) {
             CFRetain(s);
             dieSensors[dieCount++] = s;
+        }
+        if (allCount < kMaxAll) {
+            CFRetain(s);
+            strncpy(allNames[allCount], name, 63);
+            allSensors[allCount++] = s;
         }
         CFRelease(product);
     }
@@ -63,6 +73,19 @@ double monitr_cpu_temp(void) {
         if (t > 0 && t < 150 && t > hottest) hottest = t;
     }
     return hottest;
+}
+
+int monitr_temp_count(void) { return allCount; }
+
+const char *monitr_temp_name(int i) { return (i >= 0 && i < allCount) ? allNames[i] : ""; }
+
+double monitr_temp_value(int i) {
+    if (i < 0 || i >= allCount) return -1;
+    IOHIDEventRef e = IOHIDServiceClientCopyEvent(allSensors[i], kTempEvent, 0, 0);
+    if (!e) return -1;
+    double t = IOHIDEventGetFloatValue(e, kTempEvent << 16);
+    CFRelease(e);
+    return (t > 0 && t < 150) ? t : -1;  // calibration and unplugged sensors report nonsense
 }
 
 typedef pid_t (*resp_fn)(pid_t);

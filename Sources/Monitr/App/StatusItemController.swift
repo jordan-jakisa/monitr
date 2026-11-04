@@ -125,6 +125,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         )
         popover = p
         Engine.shared.setViewer("popover", active: true)
+        Store.shared.popoverOpen = true
         p.show(relativeTo: item.button!.bounds, of: item.button!, preferredEdge: .minY)
         p.contentViewController?.view.window?.makeKey()
     }
@@ -144,6 +145,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     nonisolated func popoverDidClose(_ notification: Notification) {
         MainActor.assumeIsolated {
             Engine.shared.setViewer("popover", active: false)
+            Store.shared.popoverOpen = false
             // Free the SwiftUI tree while the panel is closed.
             popover?.contentViewController = nil
             popover = nil

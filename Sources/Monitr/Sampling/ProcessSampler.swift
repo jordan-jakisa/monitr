@@ -141,6 +141,32 @@ final class ProcessSampler {
         return out
     }
 
+    /// The app a pid belongs to, by display name. Cached; cheap enough to call for every
+    /// pid that moved network data.
+    func appName(for pid: pid_t) -> String {
+        if let id = identities[pid] { return id.appName }
+        if let n = nameCache[pid] { return n }
+        var kp = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &kp, &size, nil, 0) == 0, size > 0 else { return "Process \(pid)" }
+        let start = UInt64(kp.kp_proc.p_starttime.tv_sec) &* 1_000_000 &+ UInt64(kp.kp_proc.p_starttime.tv_usec)
+        let ident = resolve(pid: pid, uid: kp.kp_eproc.e_ucred.cr_uid, start: start, comm: kp.kp_proc.p_comm)
+        if nameCache.count > 400 { nameCache.removeAll(keepingCapacity: true) }
+        nameCache[pid] = ident.appName
+        return ident.appName
+    }
+    private var nameCache: [pid_t: String] = [:]
+
+    static func startDate(of pid: pid_t) -> Date? {
+        var kp = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &kp, &size, nil, 0) == 0, size > 0 else { return nil }
+        let t = kp.kp_proc.p_starttime
+        return Date(timeIntervalSince1970: Double(t.tv_sec) + Double(t.tv_usec) / 1e6)
+    }
+
     /// Drops per-process history so the next sample starts clean (sampling was paused).
     func reset() {
         prev.removeAll(keepingCapacity: true)
