@@ -24,11 +24,15 @@ struct MainView: View {
     private func detail(for pane: Pane) -> some View {
         switch pane {
         case .overview:
+            // Pages opened from the Overview stack on top of it, each with a labelled way back.
             NavigationStack {
-                DashboardView { self.pane = .app($0) }
+                DashboardView()
                     .navigationTitle("Overview")
                     .navigationSubtitle(machineSubtitle)
-                    .navigationDestination(for: MetricKind.self) { MetricDetailView(kind: $0) }
+                    .navigationDestination(for: MetricKind.self) { MetricDetailView(kind: $0).backButton("Overview") }
+                    .navigationDestination(for: AppRoute.self) { r in
+                        ProcessesView(appKey: r.key, pushed: true).backButton(r.backTitle)
+                    }
             }
         case .processes:
             ProcessesView(appKey: nil).navigationTitle("All processes")
@@ -82,7 +86,6 @@ struct MainView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(",", modifiers: .command)
                 .padding(.horizontal, Space.s).padding(.vertical, Space.s)
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
@@ -139,6 +142,60 @@ private struct SidebarRow: View, Equatable {
                     .help(flag)
                     .accessibilityLabel(flag)
             }
+        }
+    }
+}
+
+/// An app's process page pushed from somewhere else, remembering where "back" goes.
+struct AppRoute: Hashable {
+    let key: String
+    let backTitle: String
+}
+
+extension View {
+    /// A round back button in the toolbar (the current macOS style), saying where it goes on hover.
+    func backButton(_ title: String) -> some View { modifier(BackButton(title: title)) }
+}
+
+private struct BackButton: ViewModifier {
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .buttonStyle(CircleButtonStyle())
+                    .help("Back to \(title)  ⌘[")
+                    .accessibilityLabel("Back to \(title)")
+                    .keyboardShortcut("[", modifiers: .command)
+                }
+            }
+    }
+}
+
+/// A soft round button for the toolbar: visible at rest, brighter on hover and press.
+/// Drawn here because toolbars strip the system's bordered style down to a bare glyph.
+struct CircleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { CircleBody(configuration: configuration) }
+
+    private struct CircleBody: View {
+        let configuration: ButtonStyle.Configuration
+        @State private var hovering = false
+        var body: some View {
+            configuration.label
+                .foregroundStyle(.primary)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.primary.opacity(configuration.isPressed ? 0.18 : hovering ? 0.13 : 0.08)))
+                .contentShape(Circle())
+                .onHover { hovering = $0 }
+                .motion(Motion.feedback, value: hovering)
+                .motion(Motion.feedback, value: configuration.isPressed)
         }
     }
 }

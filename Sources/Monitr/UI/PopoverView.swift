@@ -54,7 +54,10 @@ struct PopoverView: View {
             Divider()
 
             HStack {
-                Button("Open Monitr", action: openWindow)
+                Button("Open Monitr") {
+                    NSApp.keyWindow?.close()   // the panel, so the main window comes to the front
+                    openWindow()
+                }
                     .keyboardShortcut(.defaultAction)
                 Spacer()
                 Button("Quit Monitr") { NSApp.terminate(nil) }
@@ -63,6 +66,14 @@ struct PopoverView: View {
         }
         .padding(Space.l)
         .frame(width: 336)
+        .onAppear {
+            Engine.shared.setViewer("popover", active: true)
+            Store.shared.popoverOpen = true
+        }
+        .onDisappear {
+            Engine.shared.setViewer("popover", active: false)
+            Store.shared.popoverOpen = false
+        }
     }
 }
 

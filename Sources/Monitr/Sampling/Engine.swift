@@ -75,7 +75,10 @@ private final class Worker: @unchecked Sendable {
         let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         var procs: [ProcInfo]?
         snapshotNetworkIfDue()
-        if detailed && (lastProcAt == 0 || now - lastProcAt > 500_000_000) {
+        // Headline numbers refresh every tick; the per-process lists every ~4 s (Activity Monitor
+        // uses 5 s). Reading 900 processes and redrawing their rows is most of Monitr's cost.
+        let procEvery = UInt64(max(3.5, Double(interval) * 2) * 1e9)
+        if detailed && (lastProcAt == 0 || now - lastProcAt >= procEvery - 300_000_000) {
             procs = processes.sample(network: netRates, helper: HelperClient.shared.usage())
             lastProcAt = now
         }

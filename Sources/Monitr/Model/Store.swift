@@ -133,7 +133,10 @@ final class Store {
     @ObservationIgnored private var runningApps: [String: (pid: pid_t, regular: Bool)] = [:]
     @ObservationIgnored private var frontPath: String?
 
+    @ObservationIgnored private var simulatorRunning = false
+
     private func refreshRunningApps() {
+        simulatorRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.iphonesimulator").isEmpty
         var map: [String: (pid_t, Bool)] = [:]
         for app in NSWorkspace.shared.runningApplications {
             guard let path = app.bundleURL?.path else { continue }
@@ -236,7 +239,7 @@ final class Store {
             let ra = rank(a), rb = rank(b)
             return ra != rb ? ra < rb : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
         }.map { SidebarEntry(key: $0.id, name: $0.name, flag: $0.suggestQuit ? $0.statusText?.0 : nil,
-                     isApp: runningApps[$0.id]?.regular == true) }
+                     isApp: runningApps[$0.id]?.regular == true || ($0.id == ProcessSampler.simulatorKey && simulatorRunning)) }
         if entries != sidebar { sidebar = entries }
     }
 

@@ -517,7 +517,8 @@ private struct TopAppsSection: View {
                             }
                             .font(.callout)
                         }
-                        Button("Show all \(g.count) processes of \(g.name)") { store.navigateTo = .app(g.id) }
+                        NavigationLink("Show all \(g.count) processes of \(g.name)",
+                                       value: AppRoute(key: g.id, backTitle: kind.title))
                             .buttonStyle(.link)
                             .font(.callout)
                     } label: {

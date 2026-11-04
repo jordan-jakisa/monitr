@@ -203,7 +203,7 @@ final class ProcessSampler {
         if name.isEmpty { name = "Process \(pid)" }
 
         // iOS Simulator processes (SpringBoard, backboardd...) belong together under the Simulator.
-        if path.contains("/CoreSimulator/") || shortName == "launchd_sim" {
+        if path.contains("CoreSimulator") || shortName == "launchd_sim" {
             return Identity(start: start, name: name, path: path, appKey: Self.simulatorKey, appName: "iOS Simulator",
                             isAppBundle: true, isSystem: false)
         }

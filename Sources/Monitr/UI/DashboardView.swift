@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DashboardView: View {
     @Environment(Store.self) private var store
-    var openApp: (String) -> Void
 
     var body: some View {
         let worth = worthClosing
@@ -128,7 +127,7 @@ struct DashboardView: View {
                 ProgressView().controlSize(.small).padding(.vertical, Space.s)
             }
             ForEach(rows) { g in
-                Button { openApp(g.id) } label: {
+                NavigationLink(value: AppRoute(key: g.id, backTitle: "Overview")) {
                     HStack(spacing: Space.m) {
                         AppIcon(key: g.id, size: 20)
                         VStack(alignment: .leading, spacing: Space.xs) {

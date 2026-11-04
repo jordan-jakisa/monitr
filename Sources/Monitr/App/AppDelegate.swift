@@ -1,41 +1,140 @@
 import AppKit
 import SwiftUI
 
+/// Monitr is a native SwiftUI app: one window (opened on demand) and one menu bar item.
 @main
+struct MonitrApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+
+    var body: some Scene {
+        Window("Monitr", id: WindowOpener.mainID) {
+            MainView()
+                .environment(Store.shared)
+                .background(WindowLifecycle())
+        }
+        .defaultSize(width: 1120, height: 720)
+        .windowToolbarStyle(.unified)
+        // The window opens when the person asks for it, never by itself at login.
+        .defaultLaunchBehavior(.suppressed)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { WindowOpener.open(.settings) }
+                    .keyboardShortcut(",")
+            }
+            CommandGroup(replacing: .newItem) {}
+        }
+
+        MenuBarExtra {
+            PopoverView(openWindow: { WindowOpener.open() })
+                .environment(Store.shared)
+        } label: {
+            MenuBarLabel()
+        }
+        .menuBarExtraStyle(.window)
+    }
+}
+
+/// Lets AppKit code and the menu bar open the window, which SwiftUI only exposes to views.
 @MainActor
-enum Main {
-    static func main() {
-        let app = NSApplication.shared
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        app.setActivationPolicy(.accessory)
-        withExtendedLifetime(delegate) { app.run() }
+enum WindowOpener {
+    static let mainID = "main"
+    static var action: OpenWindowAction?
+    static var pendingFirstOpen = false
+
+    static func open(_ pane: Pane? = nil) {
+        action?(id: mainID)
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        if let pane { Store.shared.navigateTo = pane }
+    }
+}
+
+/// The menu bar label. Being always on screen, it is also where the window opener is captured.
+private struct MenuBarLabel: View {
+    @Environment(\.openWindow) private var openWindow
+    @State private var label = StatusLabel.shared
+
+    var body: some View {
+        Image(nsImage: label.image)
+            .accessibilityLabel(label.accessibility)
+            .task {
+                WindowOpener.action = openWindow
+                if WindowOpener.pendingFirstOpen {
+                    WindowOpener.pendingFirstOpen = false
+                    WindowOpener.open()
+                }
+            }
+    }
+}
+
+/// Ties the SwiftUI window to Monitr's sampling: per-process data only while it is visible,
+/// a Dock icon only while it is open.
+private struct WindowLifecycle: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Tracker() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class Tracker: NSView {
+        private var tokens: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            tokens.forEach(NotificationCenter.default.removeObserver)
+            tokens = []
+            guard let w = window else { return }
+            w.setFrameAutosaveName("MonitrMain")
+            Engine.shared.setViewer("window", active: true)
+            NSApp.setActivationPolicy(.regular)
+            let nc = NotificationCenter.default
+            tokens.append(nc.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: w, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    // Covered or minimised: pause, keeping the last figures on screen.
+                    Engine.shared.setViewer("window", active: w.occlusionState.contains(.visible), keepData: true)
+                }
+            })
+            tokens.append(nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: w, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    Store.shared.windowKey = true
+                    Store.shared.publishNow()
+                }
+            })
+            tokens.append(nc.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { _ in
+                MainActor.assumeIsolated { Store.shared.windowKey = false }
+            })
+            tokens.append(nc.addObserver(forName: NSWindow.willCloseNotification, object: w, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    Store.shared.windowKey = false
+                    Engine.shared.setViewer("window", active: false)
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            })
+        }
     }
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private var statusItem: StatusItemController?
-    private var window: NSWindow?
-
+final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
-        // One Monitr at a time: a second launch (say, from the build folder) hands over and quits.
+        // One Monitr at a time: a second launch (say, from Finder) hands over and quits.
         let me = NSRunningApplication.current
         if let id = Bundle.main.bundleIdentifier,
            let other = NSRunningApplication.runningApplications(withBundleIdentifier: id)
                .first(where: { $0.processIdentifier != me.processIdentifier }) {
-            if let url = other.bundleURL { NSWorkspace.shared.open(url) }  // shows its window
+            if let url = other.bundleURL { NSWorkspace.shared.open(url) }
             NSApp.terminate(nil)
             return
         }
+        NSApp.setActivationPolicy(.accessory)
         Engine.shared.start()
-        statusItem = StatusItemController { [weak self] in self?.showWindow() }
-        installMainMenu()
-        if !launchedAsLoginItem() { showWindow() }
+        _ = StatusLabel.shared
+        // Opened by the person (not at login): show the window as soon as the opener exists.
+        if !launchedAsLoginItem() {
+            if WindowOpener.action != nil { WindowOpener.open() } else { WindowOpener.pendingFirstOpen = true }
+        }
     }
 
+    /// Opening Monitr again from Finder, Spotlight or the Dock brings the window back.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showWindow()
+        WindowOpener.open()
         return true
     }
 
@@ -49,98 +148,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
         return event.eventID == kAEOpenApplication
             && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
-    }
-
-    func showWindow() {
-        if window == nil {
-            let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1120, height: 700),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-                backing: .buffered, defer: false
-            )
-            w.title = "Monitr"
-            w.isReleasedWhenClosed = false
-            // A real toolbar lets SwiftUI place the title, sidebar button, filters and search in
-            // it, and gives the native Liquid Glass bar and floating sidebar instead of a plain
-            // title bar with a hard divider.
-            let toolbar = NSToolbar(identifier: "MonitrMain")
-            toolbar.displayMode = .iconOnly
-            w.toolbar = toolbar
-            w.toolbarStyle = .unified
-            w.titlebarSeparatorStyle = .none
-            let host = NSHostingController(rootView: MainView().environment(Store.shared))
-            host.sizingOptions = [.minSize]
-            w.contentViewController = host
-            w.setContentSize(NSSize(width: 1120, height: 700))
-            w.delegate = self
-            w.setFrameAutosaveName("MonitrMain")
-            if !w.setFrameUsingName("MonitrMain") { w.center() }
-            window = w
-            Engine.shared.setViewer("window", active: true)
-        }
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
-        window?.makeKeyAndOrderFront(nil)
-    }
-
-    /// Fully covered or minimised windows need no per-process data; sampling pauses until
-    /// the window shows again.
-    func windowDidChangeOcclusionState(_ notification: Notification) {
-        guard let w = window else { return }
-        Engine.shared.setViewer("window", active: w.occlusionState.contains(.visible), keepData: true)
-    }
-
-    func windowDidBecomeKey(_ notification: Notification) {
-        Store.shared.windowKey = true
-        Store.shared.publishNow()
-    }
-
-    func windowDidResignKey(_ notification: Notification) { Store.shared.windowKey = false }
-
-    func windowWillClose(_ notification: Notification) {
-        Store.shared.windowKey = false
-        Engine.shared.setViewer("window", active: false)
-        // Drop the whole view tree; it is rebuilt on next open. Keeps idle memory small.
-        window?.contentViewController = nil
-        window = nil
-        NSApp.setActivationPolicy(.accessory)
-    }
-
-    @objc private func openSettings() {
-        showWindow()
-        Store.shared.navigateTo = .settings
-    }
-
-    private func installMainMenu() {
-        let main = NSMenu()
-        let appItem = NSMenuItem()
-        let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Monitr", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
-        appMenu.addItem(.separator())
-        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settings.target = self
-        appMenu.addItem(settings)
-        appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Monitr", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        appMenu.addItem(withTitle: "Quit Monitr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu
-        main.addItem(appItem)
-
-        let editItem = NSMenuItem()
-        let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        edit.addItem(withTitle: "Find", action: #selector(NSResponder.performTextFinderAction(_:)), keyEquivalent: "f")
-        editItem.submenu = edit
-        main.addItem(editItem)
-
-        let windowItem = NSMenuItem()
-        let win = NSMenu(title: "Window")
-        win.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        win.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        windowItem.submenu = win
-        main.addItem(windowItem)
-        NSApp.mainMenu = main
-        NSApp.windowsMenu = win
     }
 }

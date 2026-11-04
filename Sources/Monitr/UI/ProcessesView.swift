@@ -10,6 +10,9 @@ struct ProcessesView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let appKey: String?
     var onBack: () -> Void = {}
+    /// Pushed onto a stack (from the Overview or a metric page) rather than picked in the sidebar.
+    var pushed = false
+    @Environment(\.dismiss) private var dismiss
     @State private var appName = ""
 
     @State private var filter: ProcFilter = .all
@@ -47,7 +50,7 @@ struct ProcessesView: View {
                 } description: {
                     Text("It quit, so it has no processes left to show.")
                 } actions: {
-                    Button("Back to Overview", action: onBack)
+                    Button(pushed ? "Go back" : "Back to Overview") { pushed ? dismiss() : onBack() }
                 }
                 .transition(.opacity)
             } else {

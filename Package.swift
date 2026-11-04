@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Monitr",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     targets: [
         .target(
             name: "CMonitr",
