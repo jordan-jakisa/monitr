@@ -51,7 +51,7 @@ struct MainView: View {
                 }
                 Section("Tools") {
                     Label("Quick quit", systemImage: "xmark.square").tag(Pane.quickQuit)
-                    Label("Disk clean", systemImage: "externaldrive.badge.minus").tag(Pane.diskClean)
+                    Label("Disk clean", systemImage: "internaldrive").tag(Pane.diskClean)
                 }
                 Section("Apps") {
                     ForEach(store.sidebar) { e in

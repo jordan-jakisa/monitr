@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import SwiftUI
 
 /// Frees disk space by moving cache-type folders' contents to the Trash. Nothing is deleted
 /// outright: the space comes back when the Trash is emptied, and anything can be put back.
@@ -71,11 +72,17 @@ final class DiskClean {
         let paths = targets.map { ($0.id, $0.path) }
         for i in targets.indices { targets[i].size = nil }
         Task.detached(priority: .utility) {
-            for (id, path) in paths {
-                let size = Self.allocatedSize(of: path)
-                await MainActor.run {
-                    if let i = DiskClean.shared.targets.firstIndex(where: { $0.id == id }) {
-                        DiskClean.shared.targets[i].size = size
+            // Each folder is measured on its own, so small ones show their size right away
+            // instead of waiting behind an 11 GB Gradle cache.
+            await withTaskGroup(of: Void.self) { group in
+                for (id, path) in paths {
+                    group.addTask {
+                        let size = Self.allocatedSize(of: path)
+                        await MainActor.run {
+                            if let i = DiskClean.shared.targets.firstIndex(where: { $0.id == id }) {
+                                withAnimation(Motion.reveal) { DiskClean.shared.targets[i].size = size }
+                            }
+                        }
                     }
                 }
             }

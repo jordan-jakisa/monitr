@@ -67,3 +67,26 @@ struct RowButtonStyle: ButtonStyle {
         }
     }
 }
+
+/// Explanatory text under a form section. Grouped forms on macOS align footers to the trailing
+/// edge, which reads as broken for more than a few words; this keeps notes leading-aligned.
+struct FormNote: View {
+    let text: String
+    var icon: String? = nil
+
+    init(_ text: String, icon: String? = nil) {
+        self.text = text
+        self.icon = icon
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+            if let icon { Image(systemName: icon).accessibilityHidden(true) }
+            Text(text).fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}

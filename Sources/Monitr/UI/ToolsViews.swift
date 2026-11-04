@@ -12,63 +12,81 @@ struct QuickQuitView: View {
         Form {
             Section {
                 if quick.entries.isEmpty {
-                    Text("No apps yet. Add the ones you close together, like chat and music apps at the end of the day.")
-                        .foregroundStyle(.secondary)
+                    EmptyRow(icon: "xmark.square", title: "No apps yet",
+                             detail: "Add the apps you close together, like chat and music apps at the end of the day.")
                 }
                 ForEach(quick.entries) { e in
-                    HStack(spacing: Space.s) {
-                        AppIcon(key: e.path, size: 20)
-                        VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: Space.m) {
+                        AppIcon(key: e.path, size: 24)
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(e.name)
-                            Text(quick.isRunning(e) ? "Running" : "Not running").font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: Space.xs) {
+                                Circle().fill(quick.isRunning(e) ? Color.green : Color.secondary.opacity(0.5))
+                                    .frame(width: 6, height: 6)
+                                    .accessibilityHidden(true)
+                                Text(quick.isRunning(e) ? "Running" : "Not running")
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Button { withAnimation(Motion.list) { quick.remove(e) } } label: {
-                            Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Remove \(e.name) from the list")
-                        .accessibilityLabel("Remove \(e.name)")
+                        RemoveButton(name: e.name) { withAnimation(Motion.list) { quick.remove(e) } }
                     }
+                    .padding(.vertical, 2)
                     .transition(.opacity)
                 }
-                HStack {
-                    Menu {
-                        ForEach(quick.addableRunningApps, id: \.processIdentifier) { app in
-                            Button(app.localizedName ?? "App") { if let u = app.bundleURL { withAnimation(Motion.list) { quick.add(url: u) } } }
-                        }
-                        if !quick.addableRunningApps.isEmpty { Divider() }
-                        Button("Choose from Applications…") { chooseApp() }
-                    } label: {
-                        Label("Add app", systemImage: "plus")
-                    }
-                    .fixedSize()
-                    Spacer()
-                }
+                Button { showAddMenu() } label: { AddLabel(title: "Add App") }
+                    .buttonStyle(.borderless)
+                    .help("Add a running app, or choose one from Applications")
             } header: {
                 Text("Apps to quit together")
             } footer: {
-                Text("Each app gets a normal quit, so it can still ask you to save. Also in the menu bar menu.")
-                    .foregroundStyle(.secondary)
+                FormNote("Each app gets a normal quit, so it can still ask you to save. Also in the menu bar menu.")
             }
 
-            Section {
-                Button {
-                    quick.quitAll()
-                } label: {
-                    Text(running == 0 ? "None of these apps are running" : "Quit \(running) \(running == 1 ? "app" : "apps")")
-                        .frame(maxWidth: .infinity)
+            if !quick.entries.isEmpty {
+                Section {
+                    if running == 0 {
+                        Text("None of these apps are running right now.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    } else {
+                        Button { quick.quitAll() } label: {
+                            Text("Quit \(running) \(running == 1 ? "App" : "Apps")").frame(maxWidth: .infinity)
+                        }
+                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                    }
                 }
-                .controlSize(.large)
-                .buttonStyle(.borderedProminent)
-                .disabled(running == 0)
-                .keyboardShortcut(.defaultAction)
             }
         }
         .formStyle(.grouped)
         .frame(maxWidth: 620)
         .frame(maxWidth: .infinity)
+        .motion(Motion.list, value: quick.entries.count)
         .navigationTitle("Quick quit")
+    }
+
+    /// A native pop-up menu at the pointer: running apps first, then the Applications picker.
+    private func showAddMenu() {
+        let menu = NSMenu()
+        let running = quick.addableRunningApps
+        if !running.isEmpty {
+            menu.addItem(NSMenuItem.sectionHeader(title: "Running now"))
+            for app in running {
+                let item = ClosureMenuItem(title: app.localizedName ?? "App") {
+                    if let u = app.bundleURL { withAnimation(Motion.list) { QuickQuit.shared.add(url: u) } }
+                }
+                if let icon = app.icon {
+                    icon.size = NSSize(width: 16, height: 16)
+                    item.image = icon
+                }
+                menu.addItem(item)
+            }
+            menu.addItem(.separator())
+        }
+        menu.addItem(ClosureMenuItem(title: "Choose from Applications…") { chooseApp() })
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
     private func chooseApp() {
@@ -96,24 +114,23 @@ struct DiskCleanView: View {
             } header: {
                 Text("Safe to clear")
             } footer: {
-                Text("Apps and tools rebuild these when they need them. Items go to the Trash, so you can put anything back until you empty it.")
-                    .foregroundStyle(.secondary)
+                FormNote("Apps and tools rebuild these when they need them. Items go to the Trash, so you can put anything back until you empty it.")
             }
 
             Section {
                 ForEach(clean.targets.filter(\.custom)) { t in row(t) }
                 if clean.targets.allSatisfy({ !$0.custom }) {
-                    Text("No folders of your own yet.").foregroundStyle(.secondary)
+                    EmptyRow(icon: "folder.badge.plus", title: "No folders of your own yet",
+                             detail: "Add a folder whose contents are always safe to throw away.")
                 }
-                Button { chooseFolder() } label: { Label("Add folder…", systemImage: "plus") }
+                Button { chooseFolder() } label: { AddLabel(title: "Add Folder…") }
                     .buttonStyle(.borderless)
                 if let addError { Text(addError).foregroundStyle(.red).font(.callout) }
             } header: {
                 Text("Your folders")
             } footer: {
-                Label("Advanced: everything inside a folder you add is moved to the Trash. Add only folders whose contents you never need, like a build or download cache.",
-                      systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.secondary)
+                FormNote("Advanced: everything inside a folder you add is moved to the Trash. Add only folders whose contents you never need, like a build or download cache.",
+                         icon: "exclamationmark.triangle")
             }
 
             Section {
@@ -180,14 +197,12 @@ struct DiskCleanView: View {
                     EmptyView()
                 } else if let s = t.size {
                     Text(Fmt.bytes(UInt64(s))).monospacedDigit().foregroundStyle(.secondary)
+                        .transition(.opacity)
                 } else {
-                    ProgressView().controlSize(.small)
+                    Text("Measuring…").font(.callout).foregroundStyle(.tertiary)
                 }
                 if t.custom {
-                    Button { clean.removeCustom(t) } label: { Image(systemName: "minus.circle.fill").foregroundStyle(.secondary) }
-                        .buttonStyle(.borderless)
-                        .help("Remove this folder from the list")
-                        .accessibilityLabel("Remove \(t.name)")
+                    RemoveButton(name: t.name) { clean.removeCustom(t) }
                 }
             }
         }
@@ -207,4 +222,58 @@ struct DiskCleanView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do { try clean.addCustom(url) } catch { addError = error.localizedDescription }
     }
+}
+
+// MARK: Shared pieces
+
+/// "+ Add …" in the accent colour, used the same way under every editable list.
+private struct AddLabel: View {
+    let title: String
+    var body: some View {
+        Label(title, systemImage: "plus.circle.fill")
+            .foregroundStyle(Color.accentColor)
+    }
+}
+
+private struct RemoveButton: View {
+    let name: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .help("Remove \(name) from the list")
+        .accessibilityLabel("Remove \(name)")
+    }
+}
+
+/// An empty list's first row: what goes here and why.
+private struct EmptyRow: View {
+    let icon: String
+    let title: String
+    let detail: String
+    var body: some View {
+        HStack(spacing: Space.m) {
+            Image(systemName: icon).font(.title2).foregroundStyle(.secondary).frame(width: 28)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, Space.xs)
+    }
+}
+
+/// A menu item that runs a closure.
+private final class ClosureMenuItem: NSMenuItem {
+    private let run: () -> Void
+    init(title: String, run: @escaping () -> Void) {
+        self.run = run
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+    }
+    required init(coder: NSCoder) { fatalError() }
+    @objc private func fire() { run() }
 }

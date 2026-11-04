@@ -50,7 +50,7 @@ struct SettingsView: View {
             } header: {
                 Text("Menu bar")
             } footer: {
-                Text("With nothing selected, Monitr shows only its icon.").foregroundStyle(.secondary)
+                FormNote("With nothing selected, Monitr shows only its icon.")
             }
 
             Section {
@@ -69,8 +69,7 @@ struct SettingsView: View {
             } header: {
                 Text("System processes")
             } footer: {
-                Text("macOS shows CPU and memory for its own processes (WindowServer, kernel_task and others) only to administrators. This adds a small helper that runs with administrator rights, starts only while Monitr's window is open and quits when idle. It can only read usage numbers; it cannot stop or change anything.")
-                    .foregroundStyle(.secondary)
+                FormNote("macOS shows CPU and memory for its own processes (WindowServer, kernel_task and others) only to administrators. This adds a small helper that runs with administrator rights, starts only while Monitr's window is open and quits when idle. It can only read usage numbers; it cannot stop or change anything.")
             }
 
             Section("How Monitr stays light") {

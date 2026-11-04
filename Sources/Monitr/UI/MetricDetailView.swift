@@ -212,8 +212,7 @@ private struct NetworkSections: View {
             } header: {
                 Text("Data used")
             } footer: {
-                Text("Counted from \(usage.since.formatted(date: .abbreviated, time: .shortened)), when Monitr first ran. Includes Wi-Fi, Ethernet and phone tethering; VPN traffic is not counted twice.")
-                    .foregroundStyle(.secondary)
+                FormNote("Counted from \(usage.since.formatted(date: .abbreviated, time: .shortened)), when Monitr first ran. Includes Wi-Fi, Ethernet and phone tethering; VPN traffic is not counted twice.")
             }
             Section {
                 Picker("Period", selection: $period) {
@@ -236,8 +235,7 @@ private struct NetworkSections: View {
             } header: {
                 Text("Data used by app")
             } footer: {
-                Text("Per-app totals come from macOS's own network statistics, checked every minute (every few seconds while this window is open). Traffic from an app that quits between checks can be missed; the Mac's total above is exact.")
-                    .foregroundStyle(.secondary)
+                FormNote("Per-app totals come from macOS's own network statistics, checked every minute (every few seconds while this window is open). Traffic from an app that quits between checks can be missed; the Mac's total above is exact.")
             }
         } else {
             Section { Pending() }
@@ -312,8 +310,7 @@ private struct TemperatureSections: View {
             } header: {
                 Text("Every sensor")
             } footer: {
-                Text("Macs have no per-app temperature. Power use per app, below, shows which apps are heating it.")
-                    .foregroundStyle(.secondary)
+                FormNote("Macs have no per-app temperature. Power use per app, below, shows which apps are heating it.")
             }
         } else {
             Section { Pending() }
