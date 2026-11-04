@@ -66,21 +66,44 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             button.image?.isTemplate = true
             return
         }
-        button.image = nil
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
         let out = NSMutableAttributedString()
         for (i, (stat, value)) in parts.enumerated() {
-            if i > 0 { out.append(NSAttributedString(string: "  ", attributes: [.font: font])) }
+            if i > 0 { out.append(NSAttributedString(string: "  ", attributes: attrs)) }
             if let img = symbol(stat) {
                 let att = NSTextAttachment()
                 att.image = img
                 att.bounds = CGRect(x: 0, y: -2, width: img.size.width, height: img.size.height)
                 out.append(NSAttributedString(attachment: att))
-                out.append(NSAttributedString(string: " ", attributes: [.font: font]))
+                out.append(NSAttributedString(string: " ", attributes: attrs))
             }
-            out.append(NSAttributedString(string: value, attributes: [.font: font]))
+            out.append(NSAttributedString(string: value, attributes: attrs))
         }
-        button.attributedTitle = out
+        button.attributedTitle = NSAttributedString()
+        button.image = rasterize(out)
         button.setAccessibilityLabel(parts.map { "\($0.0.title) \($0.1)" }.joined(separator: ", "))
+    }
+
+    /// Draws the label once into a bitmap template image. macOS redraws status items for every
+    /// menu bar on every change; copying a bitmap is far cheaper than laying out text and symbols.
+    private func rasterize(_ text: NSAttributedString) -> NSImage {
+        let size = text.size()
+        let scale = max(NSScreen.screens.map(\.backingScaleFactor).max() ?? 2, 1)
+        let w = Int(ceil(size.width)), h = Int(ceil(max(size.height, 16)))
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(CGFloat(w) * scale), pixelsHigh: Int(CGFloat(h) * scale),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) else { return NSImage() }
+        rep.size = NSSize(width: w, height: h)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        text.draw(at: NSPoint(x: 0, y: (CGFloat(h) - size.height) / 2))
+        NSGraphicsContext.restoreGraphicsState()
+        let img = NSImage(size: rep.size)
+        img.addRepresentation(rep)
+        img.isTemplate = true
+        return img
     }
 
     @objc private func clicked() {
