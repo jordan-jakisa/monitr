@@ -22,6 +22,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         render(Store.shared.system, force: true)
         Store.shared.onSystemUpdate = { [weak self] s in self?.render(s) }
         Store.shared.onMenuStatsChange = { [weak self] in self?.render(Store.shared.system, force: true) }
+        SleepGuard.shared.onChange = { [weak self] in self?.render(Store.shared.system, force: true) }
     }
 
     private func symbol(_ stat: MenuStat) -> NSImage? {
@@ -56,18 +57,29 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         guard let button = item.button else { return }
         let stats = Store.shared.menuStats
         let parts = stats.compactMap { st in text(st, s).map { (st, $0) } }
-        let key = parts.map(\.1).joined(separator: "|")
+        let awake = SleepGuard.shared.isOn
+        let key = (awake ? "awake|" : "") + parts.map(\.1).joined(separator: "|")
         if !force && key == lastTitle { return }
         lastTitle = key
 
         if parts.isEmpty {
             button.attributedTitle = NSAttributedString()
-            button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Monitr")
+            button.image = NSImage(systemSymbolName: awake ? "cup.and.saucer.fill" : "gauge.with.dots.needle.33percent",
+                                   accessibilityDescription: awake ? "Monitr, preventing sleep" : "Monitr")
             button.image?.isTemplate = true
             return
         }
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
         let out = NSMutableAttributedString()
+        // While sleep is prevented, a cup leads the label so it is never left on by accident.
+        if awake, let cup = NSImage(systemSymbolName: "cup.and.saucer.fill", accessibilityDescription: "Preventing sleep")?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium)) {
+            let att = NSTextAttachment()
+            att.image = cup
+            att.bounds = CGRect(x: 0, y: -2, width: cup.size.width, height: cup.size.height)
+            out.append(NSAttributedString(attachment: att))
+            out.append(NSAttributedString(string: "  ", attributes: attrs))
+        }
         for (i, (stat, value)) in parts.enumerated() {
             if i > 0 { out.append(NSAttributedString(string: "  ", attributes: attrs)) }
             if let img = symbol(stat) {
@@ -81,7 +93,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         button.attributedTitle = NSAttributedString()
         button.image = rasterize(out)
-        button.setAccessibilityLabel(parts.map { "\($0.0.title) \($0.1)" }.joined(separator: ", "))
+        button.setAccessibilityLabel((awake ? "Preventing sleep, " : "") + parts.map { "\($0.0.title) \($0.1)" }.joined(separator: ", "))
     }
 
     /// Draws the label once into a bitmap template image. macOS redraws status items for every
@@ -136,11 +148,44 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Monitr", action: #selector(openFromMenu), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        let guardian = SleepGuard.shared
+        let sleepItem = NSMenuItem(title: guardian.isOn ? "Preventing Sleep: \(guardian.detail)" : "Prevent Sleep", action: nil, keyEquivalent: "")
+        sleepItem.image = NSImage(systemSymbolName: "cup.and.saucer", accessibilityDescription: nil)
+        let sub = NSMenu()
+        for (i, length) in SleepGuard.Length.choices.enumerated() {
+            let it = NSMenuItem(title: length.title, action: #selector(preventSleep(_:)), keyEquivalent: "")
+            it.target = self
+            it.tag = i
+            it.state = guardian.isOn && guardian.lastLength == length ? .on : .off
+            sub.addItem(it)
+        }
+        sub.addItem(.separator())
+        let display = NSMenuItem(title: "Keep Display On", action: #selector(toggleDisplay), keyEquivalent: "")
+        display.target = self
+        display.state = guardian.keepDisplayOn ? .on : .off
+        sub.addItem(display)
+        if guardian.isOn {
+            sub.addItem(.separator())
+            let off = NSMenuItem(title: "Allow Sleep", action: #selector(allowSleep), keyEquivalent: "")
+            off.target = self
+            sub.addItem(off)
+        }
+        sleepItem.submenu = sub
+        menu.addItem(sleepItem)
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Monitr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
         item.button?.performClick(nil)
         item.menu = nil
     }
+
+    @objc private func preventSleep(_ sender: NSMenuItem) {
+        SleepGuard.shared.turnOn(SleepGuard.Length.choices[sender.tag])
+    }
+
+    @objc private func toggleDisplay() { SleepGuard.shared.keepDisplayOn.toggle() }
+
+    @objc private func allowSleep() { SleepGuard.shared.turnOff() }
 
     @objc private func openFromMenu() { DispatchQueue.main.async { [weak self] in self?.openWindow() } }
 

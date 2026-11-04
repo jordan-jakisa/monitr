@@ -21,8 +21,10 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/LaunchDaemons/me.jordanjakisa.monitr.helper.plist "$APP/Contents/Library/LaunchDaemons/"
 # The icon is an Icon Composer file: actool turns it into the Liquid Glass asset (Assets.car)
 # for macOS 26+ and a flat AppIcon.icns for older systems.
+PARTIAL=$(mktemp -t monitr-icon)
 xcrun actool --compile "$APP/Contents/Resources" --platform macosx --minimum-deployment-target 14.0 \
-  --app-icon AppIcon --output-partial-info-plist build/icon-partial.plist Resources/AppIcon.icon >/dev/null
+  --app-icon AppIcon --output-partial-info-plist "$PARTIAL" Resources/AppIcon.icon >/dev/null
+rm -f "$PARTIAL"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" "$APP/Contents/Info.plist"
 if [[ -z "${NOSTRIP:-}" ]]; then
@@ -45,6 +47,7 @@ if [[ "${1:-}" == "--install" ]]; then
   LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   "$LSREG" -u "$PWD/$APP" >/dev/null 2>&1 || true
   rm -rf "$APP"
+  rmdir build 2>/dev/null || true
   "$LSREG" -f /Applications/Monitr.app >/dev/null 2>&1 || true
   echo "Installed /Applications/Monitr.app"
 fi

@@ -48,6 +48,10 @@ struct PopoverView: View {
 
             Divider()
 
+            PreventSleepRow()
+
+            Divider()
+
             HStack {
                 Button("Open Monitr", action: openWindow)
                     .keyboardShortcut(.defaultAction)
@@ -77,5 +81,50 @@ private struct Stat: View {
         }
         .frame(width: 144, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// One switch to keep the Mac awake, with how long and whether the screen stays on.
+private struct PreventSleepRow: View {
+    @State private var guardian = SleepGuard.shared
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            Image(systemName: guardian.isOn ? "cup.and.saucer.fill" : "cup.and.saucer")
+                .font(.title3)
+                .foregroundStyle(guardian.isOn ? Color.accentColor : .secondary)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Prevent sleep")
+                Menu {
+                    ForEach(SleepGuard.Length.choices) { length in
+                        Button {
+                            guardian.turnOn(length)
+                        } label: {
+                            if guardian.isOn && guardian.lastLength == length {
+                                Label(length.title, systemImage: "checkmark")
+                            } else {
+                                Text(length.title)
+                            }
+                        }
+                    }
+                    Divider()
+                    Toggle("Keep display on", isOn: $guardian.keepDisplayOn)
+                } label: {
+                    Text(guardian.detail).font(.caption).foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.visible)
+                .fixedSize()
+                .help("Choose how long, and whether the display stays on")
+            }
+            Spacer()
+            Toggle("Prevent sleep", isOn: Binding(get: { guardian.isOn }, set: { _ in guardian.toggle() }))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .controlSize(.small)
+        }
+        .accessibilityElement(children: .contain)
     }
 }
