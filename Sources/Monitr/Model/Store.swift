@@ -6,6 +6,9 @@ struct Ring: Equatable {
     private(set) var values: [Double]
     private var head = 0
     private(set) var count = 0
+    /// Total values ever pushed; changes on every push, so views can animate each new point.
+    private(set) var pushes = 0
+    var capacity: Int { values.count }
 
     init(capacity: Int) { values = Array(repeating: 0, count: capacity) }
 
@@ -13,6 +16,7 @@ struct Ring: Equatable {
         values[head] = v
         head = (head + 1) % values.count
         count = min(count + 1, values.count)
+        pushes &+= 1
     }
 
     /// Oldest to newest.
@@ -73,7 +77,6 @@ final class Store {
     private(set) var netOutHistory = Ring(capacity: 90)
     private(set) var tempHistory = Ring(capacity: 90)
     private(set) var powerHistory = Ring(capacity: 90)
-    private(set) var lastError: String?
 
     var menuStats: [MenuStat] {
         didSet { UserDefaults.standard.set(menuStats.map(\.rawValue), forKey: "menuStats"); onMenuStatsChange?() }
@@ -179,15 +182,19 @@ final class Store {
     // MARK: Actions
 
     /// One-click stop. Apps get a normal quit (they can save); other processes get SIGTERM.
-    /// `force` sends SIGKILL.
+    /// `force` sends SIGKILL. Anything that does not exit gets a notice with a way forward.
     func stop(pid: pid_t, force: Bool = false) {
-        if !force, let app = NSRunningApplication(processIdentifier: pid), app.bundleURL != nil, app.activationPolicy != .prohibited {
+        let name = processes.first { $0.id == pid }?.name ?? "Process \(pid)"
+        let app = NSRunningApplication(processIdentifier: pid)
+        let isApp = !force && app?.bundleURL != nil && app?.activationPolicy != .prohibited
+        if isApp, let app {
             if !app.terminate() { kill(pid, SIGTERM) }
         } else if kill(pid, force ? SIGKILL : SIGTERM) != 0 {
-            lastError = "Could not stop pid \(pid): \(String(cString: strerror(errno)))"
+            show(Notice(title: "Could not stop \(name)", detail: "macOS refused: \(String(cString: strerror(errno))).", kind: .error))
             return
         }
         hide([pid])
+        verifyExit(pids: [pid], name: name, isApp: isApp, target: .pid(pid), forced: force)
     }
 
     /// Quits an app and every process it is responsible for.
@@ -197,10 +204,32 @@ final class Store {
         if !force, let main = group.mainPid, let app = NSRunningApplication(processIdentifier: main) {
             app.terminate()
             hide(members.map(\.id))
+            verifyExit(pids: [main], name: group.name, isApp: true, target: .app(key), forced: false)
             return
         }
         for p in members { kill(p.id, force ? SIGKILL : SIGTERM) }
         hide(members.map(\.id))
+        verifyExit(pids: members.map(\.id), name: group.name, isApp: false, target: .app(key), forced: force)
+    }
+
+    /// A few seconds after a stop, checks the process really exited. If not, it comes back
+    /// into the list and a notice explains why and offers the next step.
+    private func verifyExit(pids: [pid_t], name: String, isApp: Bool, target: Notice.Target, forced: Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self else { return }
+            let alive = pids.filter { kill($0, 0) == 0 }
+            guard !alive.isEmpty else { return }
+            for p in alive { self.stopped[p] = nil }
+            if forced {
+                self.show(Notice(title: "\(name) is still running", detail: "Even a force stop did not end it. It may be stuck in the kernel; a restart clears it.", kind: .error))
+            } else if isApp {
+                self.show(Notice(title: "\(name) did not quit", detail: "It may be asking to save changes. Switch to it, or force quit and lose unsaved work.",
+                                 kind: .refused, target: target, revealPid: pids.first))
+            } else {
+                self.show(Notice(title: "\(name) did not stop", detail: "It ignored the request. Force stop ends it at once.",
+                                 kind: .refused, target: target))
+            }
+        }
     }
 
     private func hide(_ pids: [pid_t]) {
@@ -210,5 +239,37 @@ final class Store {
         apps = group(processes)
     }
 
-    func dismissError() { lastError = nil }
+    // MARK: Notices
+
+    private(set) var notice: Notice?
+
+    func show(_ n: Notice) {
+        notice = n
+        let id = n.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+            if self?.notice?.id == id { self?.notice = nil }
+        }
+    }
+
+    func dismissNotice() { notice = nil }
+
+    func forceFromNotice() {
+        guard let n = notice, let target = n.target else { return }
+        notice = nil
+        switch target {
+        case .pid(let pid): stop(pid: pid, force: true)
+        case .app(let key): stop(app: key, force: true)
+        }
+    }
+}
+
+struct Notice: Identifiable, Equatable {
+    enum Kind { case refused, error }
+    enum Target: Equatable { case pid(pid_t), app(String) }
+    let id = UUID()
+    var title: String
+    var detail: String
+    var kind: Kind
+    var target: Target? = nil
+    var revealPid: pid_t? = nil
 }

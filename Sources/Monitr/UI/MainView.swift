@@ -19,6 +19,21 @@ struct MainView: View {
         }
     }
 
+    @ViewBuilder
+    private func detail(for pane: Pane) -> some View {
+        switch pane {
+        case .overview:
+            DashboardView { self.pane = .app($0) }.navigationTitle("Overview")
+        case .processes:
+            ProcessesView(appKey: nil).navigationTitle("All processes")
+        case .app(let key):
+            ProcessesView(appKey: key, onBack: { self.pane = .overview })
+                .navigationTitle(store.apps.first { $0.id == key }?.name ?? "App")
+        case .settings:
+            SettingsView().navigationTitle("Settings")
+        }
+    }
+
     private func rank(_ g: AppGroup) -> Int { g.isSystem ? 2 : (g.isAppBundle ? 0 : 1) }
 
     var body: some View {
@@ -30,10 +45,10 @@ struct MainView: View {
                 }
                 Section("Apps") {
                     ForEach(sidebarApps) { g in
-                        HStack(spacing: 8) {
+                        HStack(spacing: Space.s) {
                             AppIcon(key: g.id, size: 16)
                             Text(g.name).lineLimit(1)
-                            Spacer(minLength: 4)
+                            Spacer(minLength: Space.xs)
                             if g.nonCritical {
                                 Circle().fill(.orange).frame(width: 6, height: 6)
                                     .help(g.statusText?.0 ?? "")
@@ -51,22 +66,24 @@ struct MainView: View {
                     Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.borderless)
-                .padding(.horizontal, 16).padding(.vertical, 10)
+                .padding(.horizontal, Space.l).padding(.vertical, Space.m)
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
         } detail: {
-            switch pane ?? .overview {
-            case .overview:
-                DashboardView { pane = .app($0) }.navigationTitle("Overview")
-            case .processes:
-                ProcessesView(appKey: nil).navigationTitle("All processes").id("all")
-            case .app(let key):
-                ProcessesView(appKey: key)
-                    .navigationTitle(store.apps.first { $0.id == key }?.name ?? "App")
-                    .id(key)
-            case .settings:
-                SettingsView().navigationTitle("Settings")
+            ZStack {
+                detail(for: pane ?? .overview)
+                    .id(pane ?? .overview)
+                    .transition(.opacity)
             }
+            .motion(Motion.reveal, value: pane)
+            .overlay(alignment: .bottom) {
+                if let n = store.notice {
+                    NoticeBar(notice: n)
+                        .padding(Space.l)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .motion(Motion.reveal, value: store.notice?.id)
         }
         .frame(minWidth: 920, minHeight: 580)
     }

@@ -14,6 +14,17 @@ private final class Worker: @unchecked Sendable {
         lastProcAt = 0
     }
 
+    func tickProcesses() {
+        let procs = processes.sample(network: network?.take() ?? [:])
+        network?.refresh()
+        lastProcAt = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                if Engine.shared.isDetailed { Store.shared.apply(processes: procs) }
+            }
+        }
+    }
+
     func tick() {
         let s = system.sample()
         // Skip a process pass that would land right after another one: tiny intervals give noisy CPU %.
@@ -64,6 +75,11 @@ final class Engine {
                 w.network = n
                 w.detailed = true
                 w.tick()
+            }
+            // A second pass shortly after gives real CPU figures in under a second instead of one interval.
+            w.queue.asyncAfter(deadline: .now() + 0.6) {
+                guard w.detailed else { return }
+                w.tickProcesses()
             }
         } else {
             w.queue.async {

@@ -2,19 +2,18 @@ import SwiftUI
 
 struct DashboardView: View {
     @Environment(Store.self) private var store
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var openApp: (String) -> Void
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: Space.xxl) {
                 metrics
-                HStack(alignment: .top, spacing: 32) {
+                HStack(alignment: .top, spacing: Space.xxl) {
                     topApps.frame(maxWidth: .infinity, alignment: .topLeading)
                     closable.frame(maxWidth: .infinity, alignment: .topLeading)
                 }
             }
-            .padding(24)
+            .padding(Space.xl)
         }
     }
 
@@ -24,20 +23,20 @@ struct DashboardView: View {
         let s = store.system
         return HStack(alignment: .top, spacing: 0) {
             Metric(title: "CPU", value: Fmt.percent(s.cpu), detail: thermalText(s.thermal),
-                   history: store.cpuHistory.ordered, ceiling: 100, tint: .blue)
-            Divider().padding(.vertical, 4)
+                   ring: store.cpuHistory, ceiling: 100, tint: .blue)
+            Divider().padding(.vertical, Space.xs)
             Metric(title: "Memory", value: Fmt.bytes(s.memoryUsed),
                    detail: s.pressure == .normal ? "of \(Fmt.bytes(s.memoryTotal))" : pressureText(s.pressure),
-                   history: store.memHistory.ordered, ceiling: 100, tint: .purple)
-            Divider().padding(.vertical, 4)
+                   ring: store.memHistory, ceiling: 100, tint: .purple)
+            Divider().padding(.vertical, Space.xs)
             Metric(title: "Network", value: "↓" + Fmt.rate(s.netIn), detail: "↑ " + Fmt.rate(s.netOut) + " up",
-                   history: store.netInHistory.ordered, ceiling: nil, tint: .teal)
-            Divider().padding(.vertical, 4)
+                   ring: store.netInHistory, ceiling: nil, tint: .teal)
+            Divider().padding(.vertical, Space.xs)
             Metric(title: "Temperature", value: s.temperature.map(Fmt.temp) ?? "–", detail: "Hottest core",
-                   history: store.tempHistory.ordered, ceiling: 100, tint: .orange)
-            Divider().padding(.vertical, 4)
+                   ring: store.tempHistory, ceiling: 100, tint: .orange)
+            Divider().padding(.vertical, Space.xs)
             Metric(title: "Power", value: s.power.map(Fmt.watts) ?? "–", detail: batteryText(s),
-                   history: store.powerHistory.ordered, ceiling: nil, tint: .green)
+                   ring: store.powerHistory, ceiling: nil, tint: .green)
         }
     }
 
@@ -67,74 +66,106 @@ struct DashboardView: View {
         return "Battery \(b)%"
     }
 
-    // MARK: Top apps
+    // MARK: Busiest apps
 
     private var topApps: some View {
         let top = Array(store.apps.sorted { $0.cpu > $1.cpu }.prefix(7))
         let maxCPU = max(top.first?.cpu ?? 1, 1)
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("Busiest apps").font(.headline)
+        return VStack(alignment: .leading, spacing: Space.xs) {
+            SectionTitle(title: "Busiest apps", detail: "By CPU. Click one to see its processes.")
             if top.isEmpty {
-                ProgressView().controlSize(.small).padding(.vertical, 8)
+                ProgressView().controlSize(.small).padding(.vertical, Space.s)
             }
             ForEach(top) { g in
                 Button { openApp(g.id) } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: Space.m) {
                         AppIcon(key: g.id, size: 20)
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: Space.xs) {
                             HStack {
                                 Text(g.name).lineLimit(1)
                                 Spacer()
                                 Text(Fmt.percent(g.cpu)).monospacedDigit().foregroundStyle(.secondary)
                             }
-                            Capsule().fill(.blue.opacity(0.75))
-                                .frame(width: nil, height: 4)
-                                .scaleEffect(x: max(0.02, g.cpu / maxCPU), anchor: .leading)
+                            UsageBar(fraction: g.cpu / maxCPU, tint: .blue)
                         }
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RowButtonStyle())
+                .padding(.horizontal, -Space.s)
                 .help("Show \(g.name)'s processes")
+                .transition(.opacity)
             }
         }
-        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: top.map(\.id))
+        .motion(Motion.list, value: top.map(\.id))
     }
 
-    // MARK: Closable
+    // MARK: Running but not used
 
     private var closable: some View {
-        let items = store.apps
+        let items = Array(store.apps
             .filter { $0.nonCritical && $0.killable && $0.memory >= 30 * 1024 * 1024 }
             .sorted { $0.memory > $1.memory }
-            .prefix(7)
-        return VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Running but not used").font(.headline)
-                Text("Apps you have not switched to in \(Int(Store.unusedAfter / 60)) minutes, and background work idle for \(Int(ProcessSampler.idleAfter / 60)) minutes.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
+            .prefix(7))
+        return VStack(alignment: .leading, spacing: Space.xs) {
+            SectionTitle(
+                title: "Running but not used",
+                detail: "Apps you have not switched to in \(Int(Store.unusedAfter / 60)) minutes, and background work idle for \(Int(ProcessSampler.idleAfter / 60)) minutes."
+            )
             if items.isEmpty {
-                Text(store.apps.isEmpty ? "Measuring…" : "Nothing idle right now.")
-                    .foregroundStyle(.secondary).padding(.vertical, 6)
+                Label(store.apps.isEmpty ? "Measuring…" : "Nothing idle right now.", systemImage: "checkmark.circle")
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, Space.s)
+                    .transition(.opacity)
             }
-            ForEach(Array(items)) { g in
-                HStack(spacing: 10) {
+            ForEach(items) { g in
+                HStack(spacing: Space.m) {
                     AppIcon(key: g.id, size: 20)
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 0) {
                         Text(g.name).lineLimit(1)
                         if let st = g.statusText { TagLabel(text: st.0, tone: st.1) }
                     }
                     Spacer()
                     Text(Fmt.bytes(g.memory)).monospacedDigit().foregroundStyle(.secondary)
-                    StopButton(title: g.isAppBundle ? "Quit" : "Stop") { force in
-                        withAnimation(reduceMotion ? nil : .smooth) { store.stop(app: g.id, force: force) }
+                    StopButton(title: g.isAppBundle ? "Quit" : "Stop all") { force in
+                        withAnimation(Motion.list) { store.stop(app: g.id, force: force) }
                     }
                 }
+                .padding(.vertical, Space.xs)
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
-        .animation(reduceMotion ? nil : .smooth(duration: 0.35), value: items.map(\.id))
+        .motion(Motion.list, value: items.map(\.id))
+    }
+}
+
+private struct SectionTitle: View {
+    let title: String
+    let detail: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            Text(title).font(.headline)
+            Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.bottom, Space.s)
+    }
+}
+
+/// A thin track with a fill that eases to its new length.
+struct UsageBar: View {
+    let fraction: Double
+    let tint: Color
+    var body: some View {
+        Capsule()
+            .fill(Color.primary.opacity(0.06))
+            .frame(height: 4)
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(tint.opacity(0.8))
+                        .frame(width: max(4, geo.size.width * min(max(fraction, 0), 1)))
+                }
+            }
+            .motion(Motion.data, value: fraction)
     }
 }
 
@@ -142,13 +173,12 @@ private struct Metric: View {
     let title: String
     let value: String
     let detail: String
-    let history: [Double]
+    let ring: Ring
     let ceiling: Double?
     let tint: Color
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.xs) {
             Text(title).font(.subheadline).foregroundStyle(.secondary)
             Text(value)
                 .font(.system(size: 26, weight: .semibold, design: .rounded))
@@ -156,11 +186,11 @@ private struct Metric: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(detail).font(.callout).foregroundStyle(.secondary).lineLimit(1)
-            Sparkline(values: history, ceiling: ceiling, tint: tint)
+            Sparkline(ring: ring, ceiling: ceiling, tint: tint)
                 .frame(height: 44)
-                .padding(.top, 4)
+                .padding(.top, Space.s)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -182,6 +212,7 @@ struct StopButton: View {
         .controlSize(.small)
         .tint(hovering ? .red : nil)
         .onHover { hovering = $0 }
+        .motion(Motion.feedback, value: hovering)
         .help("\(title) now. Option-click to force.")
     }
 }
