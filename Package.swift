@@ -10,9 +10,11 @@ let package = Package(
             path: "Sources/CMonitr",
             linkerSettings: [.linkedFramework("IOKit"), .linkedFramework("CoreFoundation")]
         ),
+        // The XPC contract between the app and its root helper.
+        .target(name: "MonitrShared", path: "Sources/MonitrShared"),
         .executableTarget(
             name: "Monitr",
-            dependencies: ["CMonitr"],
+            dependencies: ["CMonitr", "MonitrShared"],
             path: "Sources/Monitr",
             swiftSettings: [.unsafeFlags(["-Osize"], .when(configuration: .release))],
             linkerSettings: [
@@ -22,6 +24,13 @@ let package = Package(
                 .linkedFramework("IOKit"),
                 .linkedFramework("SystemConfiguration"),
             ]
+        ),
+        // Read-only root helper: CPU, memory and energy for processes the app cannot read.
+        .executableTarget(
+            name: "MonitrHelper",
+            dependencies: ["MonitrShared"],
+            path: "Sources/MonitrHelper",
+            swiftSettings: [.unsafeFlags(["-Osize"], .when(configuration: .release))]
         ),
     ],
     swiftLanguageModes: [.v5]

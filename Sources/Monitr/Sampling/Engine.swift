@@ -57,7 +57,7 @@ private final class Worker: @unchecked Sendable {
     }
 
     func tickProcesses() {
-        let procs = processes.sample(network: netRates)
+        let procs = processes.sample(network: netRates, helper: HelperClient.shared.usage())
         lastProcAt = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
@@ -76,7 +76,7 @@ private final class Worker: @unchecked Sendable {
         var procs: [ProcInfo]?
         snapshotNetworkIfDue()
         if detailed && (lastProcAt == 0 || now - lastProcAt > 500_000_000) {
-            procs = processes.sample(network: netRates)
+            procs = processes.sample(network: netRates, helper: HelperClient.shared.usage())
             lastProcAt = now
         }
 

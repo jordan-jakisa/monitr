@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import CMonitr
+import MonitrShared
 
 struct ProcTags: OptionSet, Sendable, Hashable {
     let rawValue: UInt8
@@ -61,14 +62,15 @@ final class ProcessSampler {
     private var kinfo = [kinfo_proc]()
     private var bundleNames: [String: String] = [:]
 
-    static let idleAfter: Double = 5 * 60
+    static let idleAfter: Double = 2 * 60
     static let heavyBytes: UInt64 = 200 * 1024 * 1024
     private static let protectedNames: Set<String> = [
         "Finder", "Dock", "loginwindow", "WindowServer", "SystemUIServer", "ControlCenter",
         "NotificationCenter", "Spotlight", "kernel_task", "launchd",
     ]
 
-    func sample(network: [pid_t: (Double, Double)]) -> [ProcInfo] {
+    /// `helper` holds counters from the root helper for processes this app cannot read itself.
+    func sample(network: [pid_t: (Double, Double)], helper: [pid_t: HelperRecord]? = nil) -> [ProcInfo] {
         let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         let elapsedNs = lastSampleAt == 0 ? 0 : Double(now - lastSampleAt)
         lastSampleAt = now
@@ -98,21 +100,27 @@ final class ProcessSampler {
             var p = prev[pid] ?? Prev(cpuNs: 0, energy: 0, wakeups: 0, lastActive: now, firstSeen: now)
             let fresh = prev[pid] == nil
 
-            let ok = uid == myUid && withUnsafeMutablePointer(to: &ru, {
+            // Own processes are read directly; others come from the root helper when it is on.
+            var counters: (cpuNs: UInt64, mem: UInt64, energy: UInt64, wakeups: UInt64)?
+            if uid == myUid, withUnsafeMutablePointer(to: &ru, {
                 $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) }
-            }) == 0
-            if ok {
-                let cpuNs = UInt64(Double(ru.ri_user_time &+ ru.ri_system_time) * ticksToNs)
-                let wk = ru.ri_pkg_idle_wkups &+ ru.ri_interrupt_wkups
-                mem = ru.ri_phys_footprint
+            }) == 0 {
+                counters = (UInt64(Double(ru.ri_user_time &+ ru.ri_system_time) * ticksToNs), ru.ri_phys_footprint,
+                            ru.ri_energy_nj, ru.ri_pkg_idle_wkups &+ ru.ri_interrupt_wkups)
+            } else if let h = helper?[pid], h.start == start {
+                counters = (h.cpuNs, h.footprint, h.energyNj, h.wakeups)
+            }
+            let ok = counters != nil
+            if let c = counters {
+                mem = c.mem
                 if !fresh, elapsedNs > 0 {
-                    cpu = Double(cpuNs &- min(cpuNs, p.cpuNs)) / elapsedNs * 100
-                    wake = Double(wk &- min(wk, p.wakeups)) / (elapsedNs / 1e9)
-                    if ru.ri_energy_nj >= p.energy {
-                        power = Double(ru.ri_energy_nj - p.energy) / elapsedNs  // nJ per ns = W
+                    cpu = Double(c.cpuNs &- min(c.cpuNs, p.cpuNs)) / elapsedNs * 100
+                    wake = Double(c.wakeups &- min(c.wakeups, p.wakeups)) / (elapsedNs / 1e9)
+                    if c.energy >= p.energy {
+                        power = Double(c.energy - p.energy) / elapsedNs  // nJ per ns = W
                     }
                 }
-                p.cpuNs = cpuNs; p.energy = ru.ri_energy_nj; p.wakeups = wk
+                p.cpuNs = c.cpuNs; p.energy = c.energy; p.wakeups = c.wakeups
             }
             if cpu >= 0.5 || fresh || !ok { p.lastActive = now }
             prev[pid] = p

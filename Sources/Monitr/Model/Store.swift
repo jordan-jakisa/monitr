@@ -95,7 +95,7 @@ final class Store {
     /// refuses to quit (an unsaved-document prompt) reappears once this lapses.
     @ObservationIgnored private var stopped: [pid_t: Date] = [:]
 
-    static let unusedAfter: TimeInterval = 30 * 60
+    static let unusedAfter: TimeInterval = 15 * 60
 
     private init() {
         let saved = UserDefaults.standard.stringArray(forKey: "menuStats")?.compactMap(MenuStat.init) ?? [.cpu, .memory, .temperature]

@@ -5,6 +5,8 @@ struct SettingsView: View {
     @Environment(Store.self) private var store
     @State private var loginStatus = SMAppService.mainApp.status
     @State private var loginError: String?
+    @State private var helperStatus = HelperClient.shared.service.status
+    @State private var helperError: String?
 
     var body: some View {
         @Bindable var store = store
@@ -48,6 +50,25 @@ struct SettingsView: View {
                 Text("With nothing selected, Monitr shows only its icon.").foregroundStyle(.secondary)
             }
 
+            Section {
+                Toggle("Show usage for system processes", isOn: Binding(
+                    get: { helperStatus == .enabled || helperStatus == .requiresApproval },
+                    set: { setHelper($0) }
+                ))
+                if helperStatus == .requiresApproval {
+                    HStack {
+                        Text("Turn on Monitr under Allow in the Background, then come back.").foregroundStyle(.secondary)
+                        Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
+                    }
+                }
+                if let helperError { Text(helperError).foregroundStyle(.red).font(.callout) }
+            } header: {
+                Text("System processes")
+            } footer: {
+                Text("macOS shows CPU and memory for its own processes (WindowServer, kernel_task and others) only to administrators. This adds a small helper that runs with administrator rights, starts only while Monitr's window is open and quits when idle. It can only read usage numbers; it cannot stop or change anything.")
+                    .foregroundStyle(.secondary)
+            }
+
             Section("How Monitr stays light") {
                 Text("With this window closed, Monitr reads only whole-Mac counters. Per-process CPU, memory, power and network are measured only while this window or the menu bar panel is open.")
                     .foregroundStyle(.secondary)
@@ -56,7 +77,27 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(maxWidth: 620)
         .frame(maxWidth: .infinity)
-        .onAppear { loginStatus = SMAppService.mainApp.status }
+        .onAppear {
+            loginStatus = SMAppService.mainApp.status
+            HelperClient.shared.refreshStatus()
+            helperStatus = HelperClient.shared.service.status
+        }
+        // Coming back from System Settings after approving: pick up the new status.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            HelperClient.shared.refreshStatus()
+            helperStatus = HelperClient.shared.service.status
+        }
+    }
+
+    private func setHelper(_ on: Bool) {
+        helperError = nil
+        do {
+            if on { try HelperClient.shared.register() } else { try HelperClient.shared.unregister() }
+        } catch {
+            helperError = error.localizedDescription
+        }
+        helperStatus = HelperClient.shared.service.status
+        if on && helperStatus == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
     }
 
     private func setLogin(_ on: Bool) {

@@ -24,8 +24,8 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
   - **Temperature:** heat level and every sensor, grouped (CPU cores, chip, storage, battery).
   - **Power and battery:** charging status, time to full or empty, adapter, what the Mac is
     drawing, battery health (maximum capacity, cycles), voltage and current.
-- **Running but not used:** apps you have not switched to in 30 minutes and background
-  processes idle for 5 minutes, sorted by memory, each with a Quit button.
+- **Running but not used:** apps you have not switched to in 15 minutes and background
+  processes idle for 2 minutes, sorted by memory, each with a Quit button.
 - **One-click stop:** Stop or Quit next to every process you own. Apps get a normal quit so they
   can save; other processes get SIGTERM. Option-click forces it. macOS processes and other
   users' processes have no stop button.
@@ -52,9 +52,12 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
 
 ## Limits
 
-- **Processes owned by root or other users** (for example `WindowServer`, `kernel_task`) are
-  listed with their app, but macOS does not give an ordinary app their CPU or memory figures, so
-  they show a dash. Whole-Mac CPU and memory still include them.
+- **Processes owned by root or other users** (for example `WindowServer`, `kernel_task`): macOS
+  gives their CPU and memory only to administrators. Turn on Settings > "Show usage for system
+  processes" to add a small read-only helper that runs as root (approved once in System
+  Settings > Login Items). Without it they show a dash; whole-Mac totals include them either way.
+  The helper only reads usage counters, answers only Monitr signed by the same developer team,
+  and exits when idle.
 - **Temperature** is the hottest CPU die sensor, read through a private IOKit HID interface.
   macOS has no per-process temperature; per-process power is the closest measure of which
   process is heating the Mac.
@@ -70,7 +73,10 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
 ./scripts/build-app.sh --install
 ```
 
-This builds a release `Monitr.app`, signs it ad hoc, and copies it to `/Applications`. Without
+This builds a release `Monitr.app` with its helper, signs both with the Developer ID certificate
+when it is in the keychain (ad hoc otherwise, without the helper), and copies it to
+`/Applications`. Set `MONITR_SIGN_IDENTITY` to use another certificate; the helper's code
+signing checks in `Sources/MonitrShared/HelperProtocol.swift` name the team ID. Without
 `--install` the app is left in `build/`.
 
 ## Licence
