@@ -72,6 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    /// Fully covered or minimised windows need no per-process data; sampling pauses until
+    /// the window shows again.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let w = window else { return }
+        Engine.shared.setViewer("window", active: w.occlusionState.contains(.visible))
+    }
+
     func windowWillClose(_ notification: Notification) {
         Engine.shared.setViewer("window", active: false)
         // Drop the whole view tree; it is rebuilt on next open. Keeps idle memory small.

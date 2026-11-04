@@ -164,7 +164,8 @@ final class ProcessSampler {
         let path = Self.path(of: pid)
         var shortName = withUnsafeBytes(of: comm) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
         if pid == 0 { shortName = "kernel_task" }
-        let name = path.isEmpty ? shortName : (path as NSString).lastPathComponent
+        var name = path.isEmpty ? shortName : (path as NSString).lastPathComponent
+        if name.isEmpty { name = "Process \(pid)" }
 
         // The app that "owns" this process: the responsible pid's outermost .app bundle.
         var bundle = Self.outermostBundle(in: path)
