@@ -19,6 +19,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow?
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        // One Monitr at a time: a second launch (say, from the build folder) hands over and quits.
+        let me = NSRunningApplication.current
+        if let id = Bundle.main.bundleIdentifier,
+           let other = NSRunningApplication.runningApplications(withBundleIdentifier: id)
+               .first(where: { $0.processIdentifier != me.processIdentifier }) {
+            if let url = other.bundleURL { NSWorkspace.shared.open(url) }  // shows its window
+            NSApp.terminate(nil)
+            return
+        }
         Engine.shared.start()
         statusItem = StatusItemController { [weak self] in self?.showWindow() }
         installMainMenu()
