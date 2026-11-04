@@ -119,7 +119,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         p.contentViewController = NSHostingController(
             rootView: PopoverView(openWindow: { [weak self] in
                 self?.popover?.performClose(nil)
-                self?.openWindow()
+                // Open on the next run loop pass, after the panel's close has committed;
+                // opening a window inside that commit makes AppKit log a transaction error.
+                DispatchQueue.main.async { self?.openWindow() }
             })
             .environment(Store.shared)
         )
@@ -140,7 +142,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         item.menu = nil
     }
 
-    @objc private func openFromMenu() { openWindow() }
+    @objc private func openFromMenu() { DispatchQueue.main.async { [weak self] in self?.openWindow() } }
 
     nonisolated func popoverDidClose(_ notification: Notification) {
         MainActor.assumeIsolated {
