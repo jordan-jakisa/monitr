@@ -49,6 +49,7 @@ struct PopoverView: View {
             Divider()
 
             PreventSleepRow()
+            QuickQuitRow()
 
             Divider()
 
@@ -126,5 +127,30 @@ private struct PreventSleepRow: View {
                 .controlSize(.small)
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// Quits the saved Quick quit apps; shown only once the list has apps in it.
+private struct QuickQuitRow: View {
+    @State private var quick = QuickQuit.shared
+
+    var body: some View {
+        if !quick.entries.isEmpty {
+            let n = quick.runningCount
+            HStack(spacing: Space.m) {
+                Image(systemName: "xmark.square")
+                    .font(.title3).foregroundStyle(.secondary).frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Quick quit")
+                    Text(n == 0 ? "None of your apps are running" : "\(n) of \(quick.entries.count) apps running")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Quit \(n)") { quick.quitAll() }
+                    .controlSize(.small)
+                    .disabled(n == 0)
+            }
+        }
     }
 }

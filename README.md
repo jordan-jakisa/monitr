@@ -31,6 +31,16 @@ Built for Apple Silicon Macs on macOS 14 or later. Swift, SwiftUI and AppKit, no
   users' processes have no stop button.
 - **Menu bar:** choose any of CPU, memory, temperature, network, power and battery. Click for a
   panel with the key numbers and busiest apps.
+- **Prevent sleep:** keep the Mac awake until turned off or for 30 minutes to 4 hours,
+  optionally with the display on, from the menu bar panel or its right-click menu. A cup shows in
+  the menu bar while it is on. Closing a MacBook's lid still sleeps it unless an external display
+  is connected.
+- **Quick quit:** a saved list of apps to quit together in one click (from the sidebar, the
+  menu bar panel or its menu). Apps get a normal quit, so they can ask to save.
+- **Disk clean:** sizes and clears regenerable data (app caches, logs, Xcode build data,
+  simulator caches, and optionally Gradle and npm caches) plus folders you add. Items move to
+  the Trash, so nothing is lost until you empty it. Personal folders and macOS folders can't be
+  added.
 - **Open at login:** a switch in Settings.
 
 ## How it stays light

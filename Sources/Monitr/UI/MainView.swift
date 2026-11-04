@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Pane: Hashable {
-    case overview, processes, settings
+    case overview, processes, settings, quickQuit, diskClean
     case app(String)
 }
 
@@ -35,6 +35,10 @@ struct MainView: View {
             ProcessesView(appKey: key, onBack: { self.pane = .overview })
         case .settings:
             SettingsView().navigationTitle("Settings")
+        case .quickQuit:
+            QuickQuitView()
+        case .diskClean:
+            DiskCleanView()
         }
     }
 
@@ -44,6 +48,10 @@ struct MainView: View {
                 Section {
                     Label("Overview", systemImage: "gauge.with.dots.needle.33percent").tag(Pane.overview)
                     Label("All processes", systemImage: "list.bullet").tag(Pane.processes)
+                }
+                Section("Tools") {
+                    Label("Quick quit", systemImage: "xmark.square").tag(Pane.quickQuit)
+                    Label("Disk clean", systemImage: "externaldrive.badge.minus").tag(Pane.diskClean)
                 }
                 Section("Apps") {
                     ForEach(store.sidebar) { e in

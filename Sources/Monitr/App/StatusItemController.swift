@@ -172,6 +172,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
         sleepItem.submenu = sub
         menu.addItem(sleepItem)
+        let quick = QuickQuit.shared
+        if !quick.entries.isEmpty {
+            let n = quick.runningCount
+            let q = NSMenuItem(title: n == 0 ? "Quick Quit: none running" : "Quick Quit \(n) \(n == 1 ? "App" : "Apps")",
+                               action: n == 0 ? nil : #selector(quickQuit), keyEquivalent: "")
+            q.target = self
+            q.image = NSImage(systemSymbolName: "xmark.square", accessibilityDescription: nil)
+            menu.addItem(q)
+        }
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Monitr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
@@ -186,6 +195,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     @objc private func toggleDisplay() { SleepGuard.shared.keepDisplayOn.toggle() }
 
     @objc private func allowSleep() { SleepGuard.shared.turnOff() }
+
+    @objc private func quickQuit() { QuickQuit.shared.quitAll() }
 
     @objc private func openFromMenu() { DispatchQueue.main.async { [weak self] in self?.openWindow() } }
 
