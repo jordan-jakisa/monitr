@@ -85,7 +85,7 @@ private struct Stat: View {
     }
 }
 
-/// One switch to keep the Mac awake, with how long and whether the screen stays on.
+/// One switch to keep the Mac awake, with how long beside it and whether the screen stays on.
 private struct PreventSleepRow: View {
     @State private var guardian = SleepGuard.shared
 
@@ -98,29 +98,31 @@ private struct PreventSleepRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
                 Text("Prevent sleep")
-                Menu {
-                    ForEach(SleepGuard.Length.choices) { length in
-                        Button {
-                            guardian.turnOn(length)
-                        } label: {
-                            if guardian.isOn && guardian.lastLength == length {
-                                Label(length.title, systemImage: "checkmark")
-                            } else {
-                                Text(length.title)
-                            }
+                Text(guardian.isOn ? guardian.detail : (guardian.keepDisplayOn ? "Off, display stays on when on" : "Off"))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .contentTransition(.opacity)
+            }
+            Spacer(minLength: Space.s)
+            Menu {
+                ForEach(SleepGuard.Length.choices) { length in
+                    Button {
+                        guardian.turnOn(length)
+                    } label: {
+                        if guardian.lastLength == length {
+                            Label(length.title, systemImage: "checkmark")
+                        } else {
+                            Text(length.title)
                         }
                     }
-                    Divider()
-                    Toggle("Keep display on", isOn: $guardian.keepDisplayOn)
-                } label: {
-                    Text(guardian.detail).font(.caption).foregroundStyle(.secondary)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.visible)
-                .fixedSize()
-                .help("Choose how long, and whether the display stays on")
+                Divider()
+                Toggle("Keep display on", isOn: $guardian.keepDisplayOn)
+            } label: {
+                Text(guardian.lastLength.title).font(.callout)
             }
-            Spacer()
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("How long to stay awake, and whether the display stays on")
             Toggle("Prevent sleep", isOn: Binding(get: { guardian.isOn }, set: { _ in guardian.toggle() }))
                 .toggleStyle(.switch)
                 .labelsHidden()

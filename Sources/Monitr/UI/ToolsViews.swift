@@ -184,7 +184,7 @@ struct DiskCleanView: View {
 
     private func row(_ t: DiskClean.Target) -> some View {
         Toggle(isOn: Binding(
-            get: { clean.selected.contains(t.id) },
+            get: { clean.selected.contains(t.id) && t.exists && t.size != 0 },
             set: { on in if on { clean.selected.insert(t.id) } else { clean.selected.remove(t.id) } }
         )) {
             HStack {
@@ -195,6 +195,8 @@ struct DiskCleanView: View {
                 Spacer()
                 if !t.exists {
                     EmptyView()
+                } else if let s = t.size, s == 0 {
+                    Text("Empty").foregroundStyle(.tertiary)
                 } else if let s = t.size {
                     Text(Fmt.bytes(UInt64(s))).monospacedDigit().foregroundStyle(.secondary)
                         .transition(.opacity)
@@ -207,7 +209,7 @@ struct DiskCleanView: View {
             }
         }
         .toggleStyle(.checkbox)
-        .disabled(!t.exists)
+        .disabled(!t.exists || t.size == 0)
         .help(DiskClean.tilde(t.path))
     }
 

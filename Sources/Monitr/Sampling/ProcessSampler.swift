@@ -198,7 +198,7 @@ final class ProcessSampler {
         let path = Self.path(of: pid)
         var shortName = withUnsafeBytes(of: comm) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
         if pid == 0 { shortName = "kernel_task" }
-        var name = path.isEmpty ? shortName : (path as NSString).lastPathComponent
+        var name = Self.friendlyName(path.isEmpty ? shortName : (path as NSString).lastPathComponent)
         if name.isEmpty { name = "Process \(pid)" }
 
         // The app that "owns" this process: the responsible pid's outermost .app bundle.
@@ -235,6 +235,25 @@ final class ProcessSampler {
         }
         bundleNames[bundle] = n
         return n
+    }
+
+    /// "com.apple.WebKit.WebContent" reads as "Web Content"; the app it belongs to is shown
+    /// beside it, so the reverse-DNS prefix adds nothing but noise.
+    static func friendlyName(_ raw: String) -> String {
+        let parts = raw.split(separator: ".")
+        guard parts.count >= 3, let first = parts.first, first.first?.isLowercase == true,
+              let last = parts.last, last.count > 1 else { return raw }
+        var out = ""
+        let chars = Array(last)
+        for (i, c) in chars.enumerated() {
+            if i > 0, c.isUppercase {
+                let prev = chars[i - 1]
+                let nextLower = i + 1 < chars.count && chars[i + 1].isLowercase
+                if prev.isLowercase || (prev.isUppercase && nextLower) { out.append(" ") }
+            }
+            out.append(c)
+        }
+        return out
     }
 
     static func bundleBaseName(_ bundle: String) -> String {

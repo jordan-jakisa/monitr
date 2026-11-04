@@ -29,15 +29,17 @@ struct MetricDetailView: View {
         let s = store.system
         switch kind {
         case .cpu:
-            ChartHeader(value: Fmt.percent(s.cpu), caption: "of all cores in use", ring: store.cpuHistory, ceiling: 100, tint: .blue)
+            ChartHeader(value: Fmt.percent(s.cpu), caption: "of all cores in use", ring: store.cpuHistory, ceiling: 100, tint: .blue, peak: Fmt.percent)
         case .memory:
             ChartHeader(value: Fmt.bytes(s.memoryUsed), caption: "used of \(Fmt.bytes(s.memoryTotal))", ring: store.memHistory, ceiling: 100, tint: .purple)
         case .network:
-            ChartHeader(value: "↓" + Fmt.rate(s.netIn), caption: "↑ \(Fmt.rate(s.netOut)) up, all apps", ring: store.netInHistory, ceiling: nil, tint: .teal)
+            ChartHeader(value: "↓" + Fmt.rate(s.netIn), caption: "down, ↑ \(Fmt.rate(s.netOut)) up", ring: store.netInHistory, ceiling: nil, tint: .teal, peak: Fmt.rate)
         case .temperature:
-            ChartHeader(value: s.temperature.map(Fmt.temp) ?? "–", caption: "hottest CPU core", ring: store.tempHistory, ceiling: 100, tint: .orange)
+            // On this page the sensor list is read live; show its hottest core so the two agree.
+            let hottest = store.detail?.sensors?.first { $0.title == "CPU cores" }?.hottest ?? s.temperature
+            ChartHeader(value: hottest.map(Fmt.temp) ?? "–", caption: "hottest CPU core", ring: store.tempHistory, ceiling: 100, tint: .orange, peak: Fmt.temp)
         case .power:
-            ChartHeader(value: s.power.map(Fmt.watts) ?? "–", caption: "the whole Mac is drawing", ring: store.powerHistory, ceiling: nil, tint: .green)
+            ChartHeader(value: s.power.map(Fmt.watts) ?? "–", caption: "the whole Mac is drawing", ring: store.powerHistory, ceiling: nil, tint: .green, peak: Fmt.watts)
         }
     }
 }
@@ -48,6 +50,14 @@ private struct ChartHeader: View {
     let ring: Ring
     let ceiling: Double?
     let tint: Color
+    var peak: ((Double) -> String)? = nil
+
+    private var span: String {
+        let minutes = ring.count * Store.shared.interval / 60
+        let base = minutes < 1 ? "Last minute" : "Last \(minutes) \(minutes == 1 ? "minute" : "minutes")"
+        guard let peak, let top = ring.ordered.max(), ring.count > 1 else { return base }
+        return "\(base), peak \(peak(top))"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
@@ -57,7 +67,7 @@ private struct ChartHeader: View {
             }
             Sparkline(ring: ring, ceiling: ceiling, tint: tint)
                 .frame(height: 120)
-            Text("Last \(ring.capacity * Store.shared.interval / 60) minutes").font(.caption).foregroundStyle(.secondary)
+            Text(span).font(.caption).foregroundStyle(.secondary).monospacedDigit()
         }
         .padding(.vertical, Space.xs)
     }
@@ -68,12 +78,20 @@ private struct Fact: View {
     let label: String
     let value: String
     var note: String? = nil
+    var swatch: Color? = nil   // ties the row to its colour in a chart above
     var body: some View {
         LabeledContent {
             Text(value).monospacedDigit()
         } label: {
-            Text(label)
-            if let note { Text(note) }
+            HStack(spacing: Space.s) {
+                if let swatch {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous).fill(swatch.opacity(0.85))
+                        .frame(width: 10, height: 10)
+                        .accessibilityHidden(true)
+                }
+                Text(label)
+            }
+            if let note { Text(note).padding(.leading, swatch == nil ? 0 : 18) }
         }
     }
 }
@@ -93,11 +111,11 @@ private struct MemorySections: View {
                 SegmentBar(parts: [
                     (d.app, .purple), (d.wired, .orange), (d.compressed, .pink), (d.cached, .teal),
                 ], total: d.total)
-                Fact(label: "App memory", value: Fmt.bytes(d.app), note: "Used by apps and their processes")
-                Fact(label: "Wired", value: Fmt.bytes(d.wired), note: "Kept by macOS; can't be compressed or swapped")
-                Fact(label: "Compressed", value: Fmt.bytes(d.compressed), note: "Squeezed in RAM to make room")
-                Fact(label: "Cached files", value: Fmt.bytes(d.cached), note: "Recently used files; freed when needed")
-                Fact(label: "Free", value: Fmt.bytes(d.free))
+                Fact(label: "App memory", value: Fmt.bytes(d.app), note: "Used by apps and their processes", swatch: .purple)
+                Fact(label: "Wired", value: Fmt.bytes(d.wired), note: "Kept by macOS; can't be compressed or swapped", swatch: .orange)
+                Fact(label: "Compressed", value: Fmt.bytes(d.compressed), note: "Squeezed in RAM to make room", swatch: .pink)
+                Fact(label: "Cached files", value: Fmt.bytes(d.cached), note: "Recently used files; freed when needed", swatch: .teal)
+                Fact(label: "Free", value: Fmt.bytes(d.free), swatch: Color.primary.opacity(0.18))
             }
             Section("Swap") {
                 Fact(label: "Swap used", value: d.swapTotal == 0 ? "None" : "\(Fmt.bytes(d.swapUsed)) of \(Fmt.bytes(d.swapTotal))",

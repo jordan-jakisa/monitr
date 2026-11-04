@@ -87,6 +87,7 @@ struct FormNote: View {
         .font(.callout)
         .foregroundStyle(.secondary)
         .multilineTextAlignment(.leading)
+        .padding(.horizontal, Space.s)   // line up with the section title above the box
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

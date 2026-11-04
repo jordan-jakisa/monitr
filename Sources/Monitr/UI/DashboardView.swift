@@ -105,7 +105,7 @@ struct DashboardView: View {
 
     private var closable: some View {
         let items = Array(store.apps
-            .filter { $0.nonCritical && $0.killable && $0.memory >= 30 * 1024 * 1024 }
+            .filter(\.suggestQuit)
             .sorted { $0.memory > $1.memory }
             .prefix(7))
         return VStack(alignment: .leading, spacing: Space.xs) {

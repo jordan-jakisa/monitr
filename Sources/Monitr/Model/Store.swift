@@ -46,6 +46,9 @@ struct AppGroup: Identifiable, Equatable {
     var killable = false
 
     var nonCritical: Bool { !isSystem && (unusedFor != nil || idleFor != nil) }
+    /// Worth suggesting to quit: not needed right now, ours to stop, and holding real memory.
+    /// The Overview list and the sidebar dots both use this, so they always agree.
+    var suggestQuit: Bool { nonCritical && killable && memory >= 30 * 1024 * 1024 }
 }
 
 enum MenuStat: String, CaseIterable, Identifiable {
@@ -213,7 +216,7 @@ final class Store {
         var rows = order.compactMap { byKey[$0] }
         var i = 1
         while i < rows.count {
-            if i > 0, rows[i].cpu > rows[i - 1].cpu * 1.25 + 1 {
+            if i > 0, rows[i].cpu > rows[i - 1].cpu * 1.08 + 0.5 {
                 rows.swapAt(i, i - 1)
                 i -= 1
             } else {
@@ -228,7 +231,7 @@ final class Store {
         let entries = apps.sorted { a, b in
             let ra = rank(a), rb = rank(b)
             return ra != rb ? ra < rb : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }.map { SidebarEntry(key: $0.id, name: $0.name, flag: $0.nonCritical ? $0.statusText?.0 : nil) }
+        }.map { SidebarEntry(key: $0.id, name: $0.name, flag: $0.suggestQuit ? $0.statusText?.0 : nil) }
         if entries != sidebar { sidebar = entries }
     }
 

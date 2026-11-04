@@ -29,6 +29,7 @@ struct ProcessesView: View {
             }
             if q.isEmpty { return true }
             return p.name.localizedCaseInsensitiveContains(q) || p.appName.localizedCaseInsensitiveContains(q)
+                || (p.path as NSString).lastPathComponent.localizedCaseInsensitiveContains(q)
                 || String(p.pid) == q
         }
         list.sort(using: sortOrder)
@@ -103,25 +104,25 @@ struct ProcessesView: View {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(p.name).lineLimit(1)
                             // Always two lines, so every row has the same height.
-                            Text(p.kindText(showApp: appKey == nil)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            subtitle(p).font(.caption).lineLimit(1)
                         }
                     }
                     .help((p.path.isEmpty ? "pid \(p.pid)" : "\(p.path)\npid \(p.pid)")
                           + (p.measured ? "" : "\nOwned by macOS or another user: macOS does not share its usage."))
                 }
-                .width(min: 160, ideal: 220)
+                .width(min: 150, ideal: 200)
 
                 TableColumn("CPU", value: \.cpu) { p in
                     Text(p.measured ? Fmt.percent(p.cpu) : "–").monospacedDigit()
                         .foregroundStyle(p.cpu >= 50 ? Color.orange : p.measured ? .primary : .secondary)
                 }
-                .width(min: 56, ideal: 64)
+                .width(min: 48, ideal: 54)
 
                 TableColumn("Memory", value: \.memory) { p in
                     Text(p.measured ? Fmt.bytes(p.memory) : "–").monospacedDigit()
                         .foregroundStyle(p.measured ? .primary : .secondary)
                 }
-                .width(min: 70, ideal: 80)
+                .width(min: 64, ideal: 72)
 
                 TableColumn("Power", value: \.powerSort) { p in
                     Text(p.power.map(Fmt.watts) ?? "–").monospacedDigit().foregroundStyle(.secondary)
@@ -129,22 +130,17 @@ struct ProcessesView: View {
                 .width(min: 56, ideal: 64)
 
                 TableColumn("Network", value: \.netTotal) { p in
-                    Text(Fmt.traffic(down: p.netIn, up: p.netOut))
+                    Text(Fmt.trafficShort(down: p.netIn, up: p.netOut))
                         .monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 }
-                .width(min: 90, ideal: 130)
-
-                TableColumn("Status", value: \.tagSort) { p in
-                    if let st = p.statusText { TagLabel(text: st.0, tone: st.1) }
-                }
-                .width(min: 70, ideal: 90)
+                .width(min: 76, ideal: 96)
 
                 TableColumn("") { p in
                     if p.killable {
                         StopButton { force in stop([p.pid], force: force) }
                     }
                 }
-                .width(56)
+                .width(52)
             }
             .tableStyle(.inset(alternatesRowBackgrounds: false))
             .contextMenu(forSelectionType: pid_t.self) { pids in
@@ -167,6 +163,18 @@ struct ProcessesView: View {
                     emptyState().transition(.opacity)
                 }
             }
+    }
+
+    /// "Safari", "macOS", "Helper, idle 4m": what the process is, then its state when it matters.
+    private func subtitle(_ p: ProcInfo) -> Text {
+        let kind = Text(p.kindText(showApp: appKey == nil)).foregroundColor(.secondary)
+        if p.tags.contains(.idle) {
+            return kind + Text(", idle \(Fmt.duration(p.idleSeconds))").foregroundColor(.orange)
+        }
+        if p.tags.contains(.background) && appKey != nil {
+            return kind + Text(", background").foregroundColor(.secondary)
+        }
+        return kind
     }
 
     private func stop(_ pids: [pid_t], force: Bool) {
@@ -221,5 +229,4 @@ extension ProcInfo {
 
     var netTotal: Double { netIn + netOut }
     var powerSort: Double { power ?? -1 }
-    var tagSort: UInt8 { tags.rawValue }
 }

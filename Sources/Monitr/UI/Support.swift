@@ -20,6 +20,14 @@ enum Fmt {
         return parts.isEmpty ? "–" : parts.joined(separator: "  ")
     }
 
+    /// Table-width form: "↓4.8M ↑110K", idle directions left out.
+    static func trafficShort(down: Double, up: Double) -> String {
+        var parts: [String] = []
+        if down >= 1 { parts.append("↓" + shortRate(down)) }
+        if up >= 1 { parts.append("↑" + shortRate(up)) }
+        return parts.isEmpty ? "–" : parts.joined(separator: " ")
+    }
+
     static func rate(_ v: Double) -> String { v < 1 ? "0 KB/s" : bytes(v) + "/s" }
 
     /// Very short form for the menu bar: "1.2M", "340K".
@@ -102,15 +110,6 @@ struct TagLabel: View {
             .font(.caption)
             .foregroundStyle(tone == .attention ? Color.orange : .secondary)
             .lineLimit(1)
-    }
-}
-
-extension ProcInfo {
-    var statusText: (String, TagLabel.Tone)? {
-        if tags.contains(.system) { return ("System", .system) }
-        if tags.contains(.idle) { return ("Idle \(Fmt.duration(idleSeconds))", .attention) }
-        if tags.contains(.background) { return ("Background", .neutral) }
-        return nil
     }
 }
 
