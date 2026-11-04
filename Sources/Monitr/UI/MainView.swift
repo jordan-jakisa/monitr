@@ -9,6 +9,16 @@ struct MainView: View {
     @Environment(Store.self) private var store
     @State private var pane: Pane? = .overview
 
+    /// "Jordan's MacBook Air, up 2d 4h": which Mac this is, under the Overview title.
+    private var machineSubtitle: String {
+        var boot = timeval()
+        var len = MemoryLayout<timeval>.size
+        sysctlbyname("kern.boottime", &boot, &len, nil, 0)
+        let up = Date().timeIntervalSince1970 - Double(boot.tv_sec)
+        return "\(Self.macName), up \(Fmt.duration(up))"
+    }
+    private static let macName = Host.current().localizedName ?? "This Mac"
+
     @ViewBuilder
     private func detail(for pane: Pane) -> some View {
         switch pane {
@@ -16,6 +26,7 @@ struct MainView: View {
             NavigationStack {
                 DashboardView { self.pane = .app($0) }
                     .navigationTitle("Overview")
+                    .navigationSubtitle(machineSubtitle)
                     .navigationDestination(for: MetricKind.self) { MetricDetailView(kind: $0) }
             }
         case .processes:

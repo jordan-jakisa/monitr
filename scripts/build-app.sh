@@ -19,8 +19,12 @@ cp "$BIN/Monitr" "$APP/Contents/MacOS/Monitr"
 cp "$BIN/MonitrHelper" "$APP/Contents/MacOS/MonitrHelper"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/LaunchDaemons/me.jordanjakisa.monitr.helper.plist "$APP/Contents/Library/LaunchDaemons/"
-[[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/" \
-  && /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist"
+# The icon is an Icon Composer file: actool turns it into the Liquid Glass asset (Assets.car)
+# for macOS 26+ and a flat AppIcon.icns for older systems.
+xcrun actool --compile "$APP/Contents/Resources" --platform macosx --minimum-deployment-target 14.0 \
+  --app-icon AppIcon --output-partial-info-plist build/icon-partial.plist Resources/AppIcon.icon >/dev/null
+/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" "$APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" "$APP/Contents/Info.plist"
 if [[ -z "${NOSTRIP:-}" ]]; then
   strip -x "$APP/Contents/MacOS/Monitr" "$APP/Contents/MacOS/MonitrHelper"
 fi
@@ -36,5 +40,11 @@ if [[ "${1:-}" == "--install" ]]; then
   pkill -x Monitr 2>/dev/null || true
   rm -rf /Applications/Monitr.app
   cp -R "$APP" /Applications/
+  # Leave only the installed copy: if LaunchServices also knows the build/ copy, macOS can tie
+  # the background helper and login item to it instead of /Applications.
+  LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  "$LSREG" -u "$PWD/$APP" >/dev/null 2>&1 || true
+  rm -rf "$APP"
+  "$LSREG" -f /Applications/Monitr.app >/dev/null 2>&1 || true
   echo "Installed /Applications/Monitr.app"
 fi

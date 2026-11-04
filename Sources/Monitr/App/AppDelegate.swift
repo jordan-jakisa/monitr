@@ -60,7 +60,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             )
             w.title = "Monitr"
             w.isReleasedWhenClosed = false
+            // A real toolbar lets SwiftUI place the title, sidebar button, filters and search in
+            // it, and gives the native Liquid Glass bar and floating sidebar instead of a plain
+            // title bar with a hard divider.
+            let toolbar = NSToolbar(identifier: "MonitrMain")
+            toolbar.displayMode = .iconOnly
+            w.toolbar = toolbar
             w.toolbarStyle = .unified
+            w.titlebarSeparatorStyle = .none
             let host = NSHostingController(rootView: MainView().environment(Store.shared))
             host.sizingOptions = [.minSize]
             w.contentViewController = host
