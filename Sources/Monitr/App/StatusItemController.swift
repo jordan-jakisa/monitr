@@ -1,0 +1,129 @@
+import AppKit
+import SwiftUI
+
+/// Menu bar item. Its title is a plain attributed string, rebuilt only when the text changes.
+@MainActor
+final class StatusItemController: NSObject, NSPopoverDelegate {
+    private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private var popover: NSPopover?
+    private var lastTitle = ""
+    private let openWindow: () -> Void
+    private let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+    private var symbols: [MenuStat: NSImage] = [:]
+
+    init(openWindow: @escaping () -> Void) {
+        self.openWindow = openWindow
+        super.init()
+        guard let button = item.button else { return }
+        button.target = self
+        button.action = #selector(clicked)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.imagePosition = .imageLeading
+        render(Store.shared.system, force: true)
+        Store.shared.onSystemUpdate = { [weak self] s in self?.render(s) }
+        Store.shared.onMenuStatsChange = { [weak self] in self?.render(Store.shared.system, force: true) }
+    }
+
+    private func symbol(_ stat: MenuStat) -> NSImage? {
+        if let s = symbols[stat] { return s }
+        let name = switch stat {
+        case .cpu: "cpu"
+        case .memory: "memorychip"
+        case .temperature: "thermometer.medium"
+        case .network: "arrow.up.arrow.down"
+        case .power: "bolt.fill"
+        case .battery: "battery.75percent"
+        }
+        let cfg = NSImage.SymbolConfiguration(pointSize: 11, weight: .medium)
+        let img = NSImage(systemSymbolName: name, accessibilityDescription: stat.title)?.withSymbolConfiguration(cfg)
+        img?.isTemplate = true
+        symbols[stat] = img
+        return img
+    }
+
+    private func text(_ stat: MenuStat, _ s: SystemSnapshot) -> String? {
+        switch stat {
+        case .cpu: return "\(Int(s.cpu.rounded()))%"
+        case .memory: return "\(Int((s.memoryFraction * 100).rounded()))%"
+        case .temperature: return s.temperature.map { "\(Int($0.rounded()))°" }
+        case .network: return "↓\(Fmt.shortRate(s.netIn)) ↑\(Fmt.shortRate(s.netOut))"
+        case .power: return s.power.map { "\(Int($0.rounded()))W" }
+        case .battery: return s.battery.map { "\($0)%" }
+        }
+    }
+
+    private func render(_ s: SystemSnapshot, force: Bool = false) {
+        guard let button = item.button else { return }
+        let stats = Store.shared.menuStats
+        let parts = stats.compactMap { st in text(st, s).map { (st, $0) } }
+        let key = parts.map(\.1).joined(separator: "|")
+        if !force && key == lastTitle { return }
+        lastTitle = key
+
+        if parts.isEmpty {
+            button.attributedTitle = NSAttributedString()
+            button.image = NSImage(systemSymbolName: "gauge.with.dots.needle.33percent", accessibilityDescription: "Monitr")
+            button.image?.isTemplate = true
+            return
+        }
+        button.image = nil
+        let out = NSMutableAttributedString()
+        for (i, (stat, value)) in parts.enumerated() {
+            if i > 0 { out.append(NSAttributedString(string: "  ", attributes: [.font: font])) }
+            if let img = symbol(stat) {
+                let att = NSTextAttachment()
+                att.image = img
+                att.bounds = CGRect(x: 0, y: -2, width: img.size.width, height: img.size.height)
+                out.append(NSAttributedString(attachment: att))
+                out.append(NSAttributedString(string: " ", attributes: [.font: font]))
+            }
+            out.append(NSAttributedString(string: value, attributes: [.font: font]))
+        }
+        button.attributedTitle = out
+        button.setAccessibilityLabel(parts.map { "\($0.0.title) \($0.1)" }.joined(separator: ", "))
+    }
+
+    @objc private func clicked() {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showMenu()
+            return
+        }
+        if let p = popover, p.isShown { p.performClose(nil); return }
+        let p = NSPopover()
+        p.behavior = .transient
+        p.animates = true
+        p.delegate = self
+        p.contentViewController = NSHostingController(
+            rootView: PopoverView(openWindow: { [weak self] in
+                self?.popover?.performClose(nil)
+                self?.openWindow()
+            })
+            .environment(Store.shared)
+        )
+        popover = p
+        Engine.shared.setViewer("popover", active: true)
+        p.show(relativeTo: item.button!.bounds, of: item.button!, preferredEdge: .minY)
+        p.contentViewController?.view.window?.makeKey()
+    }
+
+    private func showMenu() {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Open Monitr", action: #selector(openFromMenu), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Monitr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        item.menu = menu
+        item.button?.performClick(nil)
+        item.menu = nil
+    }
+
+    @objc private func openFromMenu() { openWindow() }
+
+    nonisolated func popoverDidClose(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            Engine.shared.setViewer("popover", active: false)
+            // Free the SwiftUI tree while the panel is closed.
+            popover?.contentViewController = nil
+            popover = nil
+        }
+    }
+}

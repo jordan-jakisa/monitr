@@ -1,0 +1,102 @@
+import AppKit
+import SwiftUI
+
+@main
+@MainActor
+enum Main {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.setActivationPolicy(.accessory)
+        withExtendedLifetime(delegate) { app.run() }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    private var statusItem: StatusItemController?
+    private var window: NSWindow?
+
+    func applicationDidFinishLaunching(_ note: Notification) {
+        Engine.shared.start()
+        statusItem = StatusItemController { [weak self] in self?.showWindow() }
+        installMainMenu()
+        if !launchedAsLoginItem() { showWindow() }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showWindow()
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    private func launchedAsLoginItem() -> Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
+        return event.eventID == kAEOpenApplication
+            && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }
+
+    func showWindow() {
+        if window == nil {
+            let w = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1120, height: 700),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                backing: .buffered, defer: false
+            )
+            w.title = "Monitr"
+            w.isReleasedWhenClosed = false
+            w.toolbarStyle = .unified
+            let host = NSHostingController(rootView: MainView().environment(Store.shared))
+            host.sizingOptions = [.minSize]
+            w.contentViewController = host
+            w.setContentSize(NSSize(width: 1120, height: 700))
+            w.delegate = self
+            w.setFrameAutosaveName("MonitrMain")
+            if !w.setFrameUsingName("MonitrMain") { w.center() }
+            window = w
+            Engine.shared.setViewer("window", active: true)
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+        window?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        Engine.shared.setViewer("window", active: false)
+        // Drop the whole view tree; it is rebuilt on next open. Keeps idle memory small.
+        window?.contentViewController = nil
+        window = nil
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Monitr", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Monitr", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Monitr", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(withTitle: "Find", action: #selector(NSResponder.performTextFinderAction(_:)), keyEquivalent: "f")
+        editItem.submenu = edit
+        main.addItem(editItem)
+
+        let windowItem = NSMenuItem()
+        let win = NSMenu(title: "Window")
+        win.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        win.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowItem.submenu = win
+        main.addItem(windowItem)
+        NSApp.mainMenu = main
+        NSApp.windowsMenu = win
+    }
+}
