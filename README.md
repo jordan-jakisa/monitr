@@ -146,8 +146,13 @@ never be emptied), process naming, `nettop` parsing, number formatting and chart
 
 This builds a release `Monitr.app` with its helper, signs both with the Developer ID certificate
 when it is in the keychain (ad hoc otherwise, without the helper), and copies it to
-`/Applications`. Set `MONITR_SIGN_IDENTITY` to use another certificate; the helper's code
-signing checks in `Sources/MonitrShared/HelperProtocol.swift` name the team ID. Without
+`/Applications`, signed with Apple's secure timestamp. Set `MONITR_SIGN_IDENTITY` to use
+another certificate; the helper's code signing checks in
+`Sources/MonitrShared/HelperProtocol.swift` name the team ID.
+
+The app is not notarized by default. To share it with other Macs, store notarization
+credentials once (`xcrun notarytool store-credentials <profile>`) and build with
+`MONITR_NOTARY_PROFILE=<profile> ./scripts/build-app.sh`. Without
 `--install` the app is left in `build/`.
 
 ## Licence

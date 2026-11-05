@@ -31,12 +31,25 @@ if [[ -z "${NOSTRIP:-}" ]]; then
   strip -x "$APP/Contents/MacOS/Monitr" "$APP/Contents/MacOS/MonitrHelper"
 fi
 
-# Inside out: the helper first (with its own identifier), then the app.
-codesign --force --sign "$IDENTITY" --options runtime --identifier me.jordanjakisa.monitr.helper \
+# Inside out: the helper first (with its own identifier), then the app. Hardened runtime and
+# Apple's secure timestamp, as notarization requires (ad hoc signing gets neither).
+TS=()
+[[ "$IDENTITY" != "-" ]] && TS=(--timestamp)
+codesign --force --sign "$IDENTITY" --options runtime "${TS[@]}" --identifier me.jordanjakisa.monitr.helper \
   "$APP/Contents/MacOS/MonitrHelper"
-codesign --force --sign "$IDENTITY" --options runtime "$APP"
+codesign --force --sign "$IDENTITY" --options runtime "${TS[@]}" "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP ($(du -sh "$APP" | cut -f1)), signed by: $IDENTITY"
+
+# Optional: notarize and staple when a notarytool profile is named, for sharing the app.
+# Create one once with: xcrun notarytool store-credentials <profile> (API key recommended).
+if [[ -n "${MONITR_NOTARY_PROFILE:-}" && "$IDENTITY" != "-" ]]; then
+  ZIP=$(mktemp -d)/Monitr.zip
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  xcrun notarytool submit "$ZIP" --keychain-profile "$MONITR_NOTARY_PROFILE" --wait
+  xcrun stapler staple "$APP"
+  rm -f "$ZIP"
+fi
 
 if [[ "${1:-}" == "--install" ]]; then
   pkill -x Monitr 2>/dev/null || true
