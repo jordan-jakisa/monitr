@@ -27,11 +27,11 @@ processes.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/memory.png" alt="Memory page: RAM in use split into apps, macOS and compressed, then RAM available, then swap on the SSD"></td>
+    <td width="50%"><img src="docs/images/memory.png" alt="Memory page: one RAM bar split into apps, macOS, compressed, cached and free with sizes, a swap bar under it, and a pressure label"></td>
     <td width="50%"><img src="docs/images/network.png" alt="Network page: live rate chart and data used today, in the last 7 and 30 days"></td>
   </tr>
   <tr>
-    <td><b>Memory.</b> RAM in use (apps, macOS, compressed), RAM available (cached files, free) and swap on the SSD, each in plain words, with pressure.</td>
+    <td><b>Memory.</b> One look shows how RAM is split (apps, macOS, compressed, cached, free) and how much spilled into swap on the SSD, with a plain "Enough RAM" or "RAM is tight". Explanations follow below.</td>
     <td><b>Network.</b> Data used today, in the last 7 and 30 days, per day for two weeks and per app, plus each connection's totals.</td>
   </tr>
 </table>

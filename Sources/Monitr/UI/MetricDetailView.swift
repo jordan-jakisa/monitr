@@ -31,8 +31,12 @@ struct MetricDetailView: View {
         case .cpu:
             ChartHeader(value: Fmt.percent(s.cpu), caption: "of all cores in use", ring: store.cpuHistory, ceiling: 100, tint: .blue, peak: Fmt.percent)
         case .memory:
-            ChartHeader(value: Fmt.bytes(s.memoryUsed), caption: "of \(Fmt.bytes(s.memoryTotal)) RAM in use", ring: store.memHistory, ceiling: 100, tint: .purple,
-                        peak: { Fmt.bytes(UInt64($0 / 100 * Double(s.memoryTotal))) })
+            if let m = store.detail?.kind == .memory ? store.detail?.memory : nil {
+                MemoryGlance(d: m, pressure: s.pressure, ring: store.memHistory)
+            } else {
+                ChartHeader(value: Fmt.bytes(s.memoryUsed), caption: "of \(Fmt.bytes(s.memoryTotal)) RAM in use", ring: store.memHistory, ceiling: 100, tint: .purple,
+                            peak: { Fmt.bytes(UInt64($0 / 100 * Double(s.memoryTotal))) })
+            }
         case .network:
             ChartHeader(value: "↓" + Fmt.rate(s.netIn), caption: "down, ↑ \(Fmt.rate(s.netOut)) up", ring: store.netInHistory, ceiling: nil, tint: .teal, peak: Fmt.rate)
         case .temperature:
@@ -110,7 +114,6 @@ private struct MemorySections: View {
         if let d {
             let available = d.cached + d.free
             Section {
-                MemoryBar(d: d)
                 Fact(label: "Apps", value: Fmt.bytes(d.app), note: "Memory apps and their processes are using", swatch: .purple)
                 Fact(label: "macOS (wired)", value: Fmt.bytes(d.wired), note: "Reserved by macOS itself; can't be freed", swatch: .orange)
                 Fact(label: "Compressed", value: Fmt.bytes(d.compressed),
@@ -127,9 +130,6 @@ private struct MemorySections: View {
                 SectionHeading(title: "RAM available", value: Fmt.bytes(available))
             }
             Section {
-                if d.swapTotal > 0 {
-                    SwapBar(used: d.swapUsed, total: d.swapTotal)
-                }
                 Fact(label: "In swap", value: d.swapTotal == 0 ? "None" : "\(Fmt.bytes(d.swapUsed)) of \(Fmt.bytes(d.swapTotal))",
                      note: "App memory that did not fit in RAM, parked in a file on the SSD")
                 Fact(label: "Moving in and out now", value: swapActivity(d),
@@ -166,6 +166,106 @@ private struct MemorySections: View {
     }
 }
 
+/// Everything about memory in one look: RAM split by use with sizes under the bar, swap on the
+/// same scale of attention right below it, then the recent history.
+private struct MemoryGlance: View {
+    let d: MemoryDetail
+    let pressure: MemoryPressure
+    let ring: Ring
+
+    private var pressureLabel: (String, Color) {
+        switch pressure {
+        case .normal: ("Enough RAM", .green)
+        case .warning: ("RAM is tight", .orange)
+        case .critical: ("Out of RAM", .red)
+        }
+    }
+
+    var body: some View {
+        let parts: [(String, UInt64, Color)] = [
+            ("Apps", d.app, .purple), ("macOS", d.wired, .orange), ("Compressed", d.compressed, .pink),
+            ("Cached", d.cached, .teal), ("Free", d.free, Color.primary.opacity(0.25)),
+        ]
+        VStack(alignment: .leading, spacing: Space.l) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                Text(Fmt.bytes(d.used)).font(.system(size: 30, weight: .semibold, design: .rounded)).monospacedDigit()
+                Text("of \(Fmt.bytes(d.total)) RAM in use").foregroundStyle(.secondary)
+                Spacer()
+                Label(pressureLabel.0, systemImage: "circle.fill")
+                    .labelStyle(PressureLabelStyle(tint: pressureLabel.1))
+            }
+
+            // RAM: one bar, the same order as the labels under it.
+            VStack(alignment: .leading, spacing: Space.s) {
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(Array(parts.enumerated()), id: \.offset) { _, p in
+                            Rectangle().fill(p.2.opacity(0.9))
+                                .frame(width: max(2, geo.size.width * CGFloat(Double(p.1) / Double(max(d.total, 1))) - 2))
+                        }
+                    }
+                }
+                .frame(height: 14)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                HStack(alignment: .top, spacing: 0) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, p in
+                        Legend(color: p.2, title: p.0, value: Fmt.bytes(p.1))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+
+            // Swap: overflow on the SSD, directly under RAM so both read together.
+            VStack(alignment: .leading, spacing: Space.s) {
+                UsageBar(fraction: Double(d.swapUsed) / Double(max(d.swapTotal, 1)), tint: .indigo).frame(height: 8)
+                HStack(spacing: Space.l) {
+                    Legend(color: .indigo, title: "Swap on SSD",
+                           value: d.swapTotal == 0 ? "None" : "\(Fmt.bytes(d.swapUsed)) of \(Fmt.bytes(d.swapTotal))")
+                    Spacer()
+                    Text(swapNow).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+
+            Sparkline(ring: ring, ceiling: 100, tint: .purple,
+                      hoverFormat: { Fmt.bytes(UInt64($0 / 100 * Double(d.total))) })
+                .frame(height: 70)
+        }
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var swapNow: String {
+        let bytes = (d.swapInsPerSec + d.swapOutsPerSec) * Double(vm_kernel_page_size)
+        return bytes < 1 ? "Not swapping now" : "Swapping \(Fmt.rate(bytes))"
+    }
+
+    private struct Legend: View {
+        let color: Color
+        let title: String
+        let value: String
+        var body: some View {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous).fill(color).frame(width: 9, height: 9)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.caption).foregroundStyle(.secondary)
+                    Text(value).font(.callout.weight(.medium)).monospacedDigit()
+                }
+            }
+        }
+    }
+
+    private struct PressureLabelStyle: LabelStyle {
+        let tint: Color
+        func makeBody(configuration: Configuration) -> some View {
+            HStack(spacing: 6) {
+                configuration.icon.font(.system(size: 7)).foregroundStyle(tint)
+                configuration.title.font(.callout.weight(.medium))
+            }
+        }
+    }
+}
+
 /// A section title with its total on the right, like "In use      13.3 GB".
 private struct SectionHeading: View {
     let title: String
@@ -176,60 +276,6 @@ private struct SectionHeading: View {
             Spacer()
             Text(value).monospacedDigit().foregroundStyle(.secondary)
         }
-    }
-}
-
-/// All of RAM in one bar: what is in use, a gap, then what is available.
-private struct MemoryBar: View {
-    let d: MemoryDetail
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            GeometryReader { geo in
-                let total = Double(max(d.total, 1))
-                let w = geo.size.width - 6
-                HStack(spacing: 2) {
-                    seg(d.app, .purple, w, total)
-                    seg(d.wired, .orange, w, total)
-                    seg(d.compressed, .pink, w, total)
-                    Spacer().frame(width: 4)
-                    seg(d.cached, .teal, w, total)
-                    Rectangle().fill(Color.primary.opacity(0.18))
-                }
-            }
-            .frame(height: 12)
-            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-            HStack {
-                Text("RAM in use").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Text("Available").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, Space.xs)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(Fmt.bytes(d.used)) in use, \(Fmt.bytes(d.cached + d.free)) available")
-    }
-
-    private func seg(_ v: UInt64, _ c: Color, _ w: CGFloat, _ total: Double) -> some View {
-        Rectangle().fill(c.opacity(0.85)).frame(width: max(0, w * CGFloat(Double(v) / total) - 2))
-    }
-}
-
-/// How full the swap file is, drawn apart from RAM so the two are never confused.
-private struct SwapBar: View {
-    let used: UInt64
-    let total: UInt64
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            UsageBar(fraction: Double(used) / Double(max(total, 1)), tint: .indigo).frame(height: 12)
-            HStack {
-                Text("Swap used").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Text("\(Fmt.bytes(total)) swap file").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, Space.xs)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(Fmt.bytes(used)) of \(Fmt.bytes(total)) swap used")
     }
 }
 
